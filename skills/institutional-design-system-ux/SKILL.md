@@ -11,7 +11,7 @@ description: >-
 
 # Sistema de Diseño Institucional, UX Operativa, Accesibilidad e i18n (`institutional-design-system-ux`)
 
-Guía para construir interfaces de alta densidad de información —expedientes, colas operativas, asistentes multi-paso y paneles de gestión— donde la serenidad visual, la trazabilidad, la accesibilidad WCAG AA y la consistencia multi-idioma están verificadas por herramientas automáticas en lugar de depender de la memoria humana.
+Guía para construir interfaces de alta densidad de información —expedientes, colas operativas, asistentes multi-paso y paneles de gestión— donde la serenidad visual, la trazabilidad, la accesibilidad WCAG AA y la consistencia multi-idioma no dependen de la memoria humana: los tokens, el foco, los textos literales y la paridad de diccionarios se verifican con los validadores incluidos, y las razones de contraste se documentan junto a cada token y se comprueban con una herramienta nombrada (ver regla 5), porque ningún script de esta skill las mide.
 
 ## Cuándo activar esta skill
 
@@ -33,24 +33,28 @@ Al trabajar en un entorno que incluye estas skills compañeras de diseño (ver [
 ## Las 6 reglas de oro del sistema visual
 
 1. **La Regla de las Dos Capas de Tokens**:
-   - Capa 1 (Primitivos `--brand-*`): paleta cruda oficial; vive **exclusivamente** en `tokens.css` y ningún archivo externo puede referenciarla.
+   - Capa 1 (Primitivos `--brand-*` o el prefijo propio del proyecto, p. ej. `--sicre-*`): paleta cruda oficial; vive **exclusivamente** en `tokens.css` y ningún archivo externo puede referenciarla.
    - Capa 2 (Semánticos `--color-*`, `--text-*`, `--leading-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--focus-ring*`): único vocabulario permitido en hojas de estilo y componentes. Retematizar o crear modo oscuro/marca blanca consiste en redefinir la capa semántica bajo un selector, con **cero** cambios en componentes.
 2. **La Regla de los 6 Pasos**:
-   - Escalas cerradas de 6 niveles para tipografía y espaciado, y 4 niveles para interlineado y elevación. Cualquier número arbitrario fuera de escala es regresión, no variante.
+   - Escalas cerradas de 6 niveles para tipografía y espaciado, y 4 niveles para interlineado y elevación (más `--shadow-card: none` como estado plano en reposo). Cualquier número arbitrario fuera de escala es regresión, no variante.
+   - Excepciones explícitas y acotadas: los tokens de display fluido (`--text-*-fluid`, siempre con `clamp()`) para titulares, y los detalles finos de `1–2px` (grosor de bordes, `outline-offset`, separadores, ajustes ópticos de un ícono). Todo margen, relleno o `gap` mayor usa `--space-*`; un valor estructural propio (por ejemplo la sangría de un árbol) se convierte en token con nombre en `tokens.css`, nunca en un literal suelto en el componente.
 3. **La Regla de lo Plano en Reposo**:
    - Tarjetas y contenedores declaran `box-shadow: none` (`var(--shadow-card)`) en reposo, delimitados por borde de `1px` con contraste `>= 3:1`. La elevación aparece únicamente ante interacción (`:hover`, `:focus-visible`) o en elementos flotantes reales (modales, menús). Todo elemento que sube en `:hover` **aterriza** en `:active` (`translateY(0)`).
 4. **La Regla del Degradado Escaso**:
    - El acento de marca con degradado se reserva a las pocas superficies permanentes de identidad (menú lateral, portada de acceso). El contenido operativo es plano y reserva el color semántico (teal, ámbar, rojo) a estatus, banderas y alertas reales.
 5. **Accesibilidad verificada sobre el fondo efectivo (WCAG AA + Alto Contraste)**:
    - Texto normal `>= 4.5:1`, contornos de controles `>= 3:1`, objetivos táctiles `>= 44 × 44 px`, anillo de foco único de alto contraste (`--focus-ring` / `--focus-ring-field`), soporte real de Alto Contraste del sistema operativo y respeto a `prefers-reduced-motion`. Prohibido `outline: none` sin indicador equivalente en `:focus-visible` o `:focus-within`.
+   - **Patrón de foco compatible con Alto Contraste**: `box-shadow` desaparece en Windows Alto Contraste (`forced-colors: active`), así que el anillo nunca viaja solo. La regla de foco declara `outline: 2px solid transparent` (con `outline-offset` si hace falta separarlo del borde) **junto con** `box-shadow: var(--focus-ring)`: en modo normal el contorno transparente no se ve y manda el anillo; en Alto Contraste el navegador pinta ese contorno con el color del sistema. Si un componente necesita otro tratamiento, añade un bloque `@media (forced-colors: active)` con un `outline` visible en colores del sistema (`Highlight`, `CanvasText`) en la misma hoja.
+   - **Contraste documentado y comprobado**: cada token de color que se use como texto, borde o indicador lleva junto a su declaración la razón de contraste calculada contra su fondo efectivo (por ejemplo `/* 4.73:1 sobre --color-surface-muted */`), y esas cifras se comprueban con una herramienta nombrada en `DESIGN.md` (el analizador de contraste del navegador, axe-core en las pruebas E2E o un script del proyecto que lea pares de tokens). Los validadores de esta skill no miden contraste; la afirmación «cumple AA» sin cifra ni herramienta no es evidencia.
 6. **Cero texto visible hardcodeado e i18n por scopes diferidos**:
    - Cada módulo/feature carga su propio diccionario por ruta (`i18n/<scope>/{es,en}.json`), jamás un diccionario monolítico central.
    - Toda traducción invocada desde código imperativo (toasts, errores asíncronos) usa un helper asíncrono seguro (`translateLoaded`) que garantiza que el scope diferido haya cargado antes de interpolar, evitando mostrar claves crudas o lanzar errores no controlados.
+   - Toda clave usada en plantillas o código debe existir en los diccionarios: la paridad entre idiomas no detecta una clave inexistente en **todos** ellos, que se renderiza como texto crudo. Se cubre con `check-i18n-parity.mjs --check-usage` (claves literales) o con una prueba equivalente del proyecto que resuelva las claves en cada idioma (en SICRE, `core/i18n/key-resolution.spec.ts`); las claves compuestas en tiempo de ejecución siempre necesitan esa prueba.
 
 Consulta la especificación completa y recetas de implementación en:
-- [semantic-tokens-and-scales.md](./references/semantic-tokens-and-scales.md) — escalas exactas, auditoría de contraste, anillo de foco, vocabulario cerrado de animación y estructura de `DESIGN.md`.
-- [operational-ux-and-feedback-patterns.md](./references/operational-ux-and-feedback-patterns.md) — estándar de vistas operativas (expedientes, secciones numeradas, Sí/No segmentado, tablas → tarjetas móviles, bitácora en línea de tiempo, guardado y avance, modales con espera bloqueante e i18n segura).
-- Plantillas listas para adaptar: [DESIGN.template.md](./resources/DESIGN.template.md) y [tokens.template.css](./resources/tokens.template.css).
+- [semantic-tokens-and-scales.md](./references/semantic-tokens-and-scales.md) — escalas exactas y sus excepciones, documentación de contraste, anillo de foco compatible con Alto Contraste, halos tokenizados y vocabulario cerrado de animación con tokens `--motion-*`.
+- [operational-ux-and-feedback-patterns.md](./references/operational-ux-and-feedback-patterns.md) — estándar de vistas operativas (expedientes, secciones numeradas, Sí/No segmentado, tablas → tarjetas móviles, componente único de carga/error/vacío con esqueletos, indicador persistente de guardado, bitácora en línea de tiempo, guardado y avance, modales con espera bloqueante e i18n segura).
+- Plantillas listas para adaptar: [DESIGN.template.md](./resources/DESIGN.template.md) (frontmatter de tokens, colores con contraste, tipografía, movimiento, componentes, «Componente vs. Clase CSS» y Do's/Don'ts) y [tokens.template.css](./resources/tokens.template.css).
 
 ## Patrones obligatorios de interacción y retroalimentación
 
@@ -73,10 +77,17 @@ Integrar en el comando `lint` del proyecto los dos validadores incluidos (cero d
 
 ```bash
 # 1. Tokens semánticos, foco accesible y cero textos literales sueltos en HTML
-node <ruta-skill>/scripts/check-design-system.mjs --root . --styles src/styles --app src/app --tokens src/styles/tokens.css
+node <ruta-skill>/scripts/check-design-system.mjs --root . --styles src/styles --app src/app --tokens src/styles/tokens.css \
+  --primitive-prefix --brand-            # uno o varios prefijos de primitivos, separados por coma (ej. --acme-,--brand-)
+  # --require-forced-colors-focus        # opcional: exige el patrón de foco compatible con Alto Contraste
 
 # 2. Paridad exacta de claves, placeholders ({param} / {{param}}) y cero vacíos entre idiomas (raíz y scopes)
-node <ruta-skill>/scripts/check-i18n-parity.mjs --root . --i18n public/i18n --langs es,en
+node <ruta-skill>/scripts/check-i18n-parity.mjs --root . --i18n public/i18n --langs es,en \
+  --check-usage src/app                  # opcional: claves literales usadas en código que no existen en los diccionarios
 ```
 
-`check-design-system.mjs` comprueba colores hex fuera de `tokens.css`, fugas de tokens primitivos `--brand-*`, `transition: all`, `outline: none` sin reemplazo accesible, textos literales en plantillas HTML y marcadores de excepción `design-system-allow: <check> — razón` huérfanos; `check-i18n-parity.mjs` garantiza que ningún idioma se quede con claves faltantes, variables interpoladas rotas ni traducciones en blanco.
+`check-design-system.mjs` comprueba colores hex fuera de `tokens.css`, fugas de tokens primitivos (prefijos configurables con `--primitive-prefix`), `transition: all`, cada `outline: none` evaluado por regla y selector (una sola regla `:focus-visible` en la hoja ya no exime a las demás), anillos de foco literales o `outline` visibles sin justificar en reglas de foco, textos literales en plantillas HTML (nodos de texto, interpolaciones con literal y atributos `aria-label`/`title`/`placeholder`/`alt`, sin confundir el `>` de expresiones y bloques de control de flujo con texto) y marcadores de excepción `design-system-allow: <check> — razón` huérfanos. Si el proyecto ya tiene su propio checker con otros nombres de marcador (`hex-literal`, `focus-ring`, `focus-visible`, `hardcoded-string`…), el script los acepta como alias y admite alias adicionales con `--marker-alias alias=check`.
+
+`check-i18n-parity.mjs` garantiza que ningún idioma se quede con claves faltantes, variables interpoladas rotas ni traducciones en blanco y, con `--check-usage`, que las claves literales del código resuelvan en su scope o en el diccionario raíz (`--usage-pattern` añade patrones propios de la librería de i18n).
+
+**Equivalentes del proyecto**: un proyecto puede sustituir cualquiera de estos validadores por uno propio más estricto siempre que cubra las mismas comprobaciones y corra dentro de `lint` (SICRE, por ejemplo, ejecuta `scripts/check-design-system.js` y `eslint-rules/feature-boundaries.test.cjs` dentro de `npm run lint`, y resuelve claves con `key-resolution.spec.ts`). Lo que no se acepta es la ausencia de compuerta.

@@ -18,7 +18,7 @@ Haz estas tres preguntas frente a cualquier comentario del repositorio:
 ## Procedimiento para auditar un repositorio completo en dos pasadas
 
 1. **Primera pasada (automatizada + búsqueda dirigida)**:
-   - Ejecutar `audit-code-hygiene.mjs` para listar narrativa histórica, bloques comentados, supresiones de linter/compilador y llamadas directas al reloj del sistema.
+   - Ejecutar `audit-code-hygiene.mjs` para listar narrativa histórica, bloques comentados, supresiones de linter/compilador sin motivo en la misma línea, llamadas directas al reloj del sistema y pruebas saltadas sin justificación (omite carpetas generadas: `.angular`, `obj`, `bin`, `node_modules`, `coverage`, `Migrations`).
    - Activar las banderas del compilador/linter para detectar símbolos privados, parámetros, variables locales e imports sin uso (`noUnusedLocals`, `noUnusedParameters`, diagnósticos IDE de imports innecesarios).
 2. **Segunda pasada (lectura semántica por módulo)**:
    - Revisar cada archivo tocado comprobando que ningún comentario restante repita el nombre de la clase, función o test.

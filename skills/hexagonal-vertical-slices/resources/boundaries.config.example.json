@@ -1,6 +1,6 @@
 {
   "scanRoots": ["src"],
-  "extensions": [".ts", ".tsx", ".js", ".py", ".go", ".cs", ".java", ".kt", ".rs"],
+  "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".cs", ".java", ".kt", ".rs"],
   "ignorePatterns": [
     "\\.spec\\.",
     "\\.test\\.",
@@ -11,13 +11,17 @@
     "/build/",
     "/bin/",
     "/obj/",
-    "/target/"
+    "/target/",
+    "/\\.angular/",
+    "/coverage/"
   ],
+  "tsconfigFiles": ["tsconfig.json"],
   "featuresSegment": "/features/",
   "coreSegments": ["/core/", "/common/"],
   "compositionSegments": ["/composition/"],
   "layers": ["domain", "application", "infrastructure", "ui", "api"],
   "allowedUiInfrastructureRegex": "(?:^|/|\\.)composition(?:/|\\.)[^/]+tokens",
+  "allowedCrossFeatureTargetRegex": "",
   "featureImportPrefixes": ["@features/", "@app/features/", "features/", "features."],
   "compositionImportPrefixes": ["@app/composition/", "composition/", "composition."],
   "forbidDeepRelativeImports": true,

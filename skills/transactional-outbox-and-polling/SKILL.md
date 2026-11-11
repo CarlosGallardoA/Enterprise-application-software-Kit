@@ -45,6 +45,7 @@ Autenticación, autorización, validación de reglas y transiciones de estatus, 
    - Un fallo entre ejecutar el efecto externo y marcar el mensaje como procesado provocará una reentrega legítima.
    - Diseñar siempre una clave de negocio o tabla de despacho que evite duplicados dañinos.
    - **Patrón ante envíos externos inciertos** (ej. correo o pago que da timeout después de abrir red): reservar un registro activo único antes de llamar al proveedor; si falla *antes* de salir a red, permitir reintento automático; si agota tiempo *durante* la llamada externa, marcar estado `Uncertain`, detener el reintento ciego y exponer resolución humana auditada.
+   - Si el proceso muere con la reserva en estado `Sending`, nadie la cierra: el `Sweep Job` periódico busca reservas en `Sending` más antiguas que un umbral (p. ej. 5 min, mayor que el tope del handler) y las marca `Uncertain` con su intento auditado y aviso al responsable, en vez de liberarlas para un reintento automático.
 4. **Doble registro explícito**:
    - Registrar el handler en el contenedor DI (`Scoped`) y registrar `eventType -> deserializador + handler` en una **lista blanca explícita** del `OutboxDispatcher` (jamás deserialización polimórfica abierta ni reflexión sobre nombres leídos de la base).
 5. Ver el esquema completo de tabla, índices, SQL de claim atómico con lease y runbook operativo en:
@@ -55,7 +56,7 @@ Autenticación, autorización, validación de reglas y transiciones de estatus, 
 
 1. El servicio hospedado (`Singleton`) es un adaptador delgado con temporizador periódico:
    - En cada vuelta crea un **nuevo alcance DI (`Scope`)** para resolver el caso de uso y su unidad de trabajo de base de datos (nunca inyectar repositorios `Scoped` directo en el constructor `Singleton`).
-   - Envuelve cada vuelta en `try / catch` (excluyendo la cancelación de apagado del host) registrando el fallo sin derribar el proceso completo.
+   - Envuelve cada vuelta en `try / catch` (excluyendo la cancelación de apagado del host) registrando el fallo sin derribar el proceso completo. El filtro mira el token de apagado, no el tipo de excepción: `catch (e) when (!(e is OperationCanceled && stoppingToken.isCancellationRequested))`. Una cancelación propia (timeout de un cliente HTTP, tope del handler) es un fallo de la vuelta y se registra; filtrar solo por tipo de excepción la dejaría escapar y, con la política de detener el host ante excepciones no controladas, derribaría la aplicación.
 2. Toda la lógica de negocio vive en un caso de uso normal de `application`, testeable en milisegundos con fakes en memoria y reloj falso.
 3. Procesa candidatos en lotes acotados (`LIMIT`) y estampa marcas `*NotifiedAtUtc` en la misma transacción que la notificación para no repetir avisos en la vuelta siguiente.
 
@@ -64,12 +65,13 @@ Autenticación, autorización, validación de reglas y transiciones de estatus, 
 Los proxies reversos corporativos e institucionales suelen retener sesiones o bloquear pestañas ante respuestas HTTP infinitas (SSE / WebSockets). En su lugar:
 
 1. Usar un único servicio raíz `PollScheduler` (nunca `setInterval` sueltos en componentes) que garantice:
-   - Ejecución **solo mientras `document.visibilityState === 'visible'`**, disparando refresco inmediato al volver a primer plano.
+   - Ejecución **solo mientras `document.visibilityState === 'visible'` y haya conexión (`navigator.onLine`)**, con `refreshIfStale` al volver a primer plano o recuperar la red: ejecuta de inmediato solo si el último éxito supera un umbral de frescura (p. ej. 20 s).
    - **Jitter (±15 %)** para desincronizar pestañas y **backoff (×3)** tras 10 minutos sin interacción del usuario.
    - **Cero solape**: si una petición tarda más que el intervalo, el siguiente ciclo espera a que termine.
    - Baja obligatoria al destruir el componente.
 2. **Pedir lo mínimo y nunca mover filas bajo el cursor**:
-   - Fusionar señales globales (sesión vigente + contador de notificaciones) en un único `GET /shell/heartbeat` cada ~60 s **más** un refresco asíncrono en cada cambio de ruta (`NavigationEnd`) para que una revocación de permisos surta efecto de inmediato.
+   - Fusionar señales globales (sesión vigente + contador de notificaciones) en un único `GET /shell/heartbeat` cada ~60 s **más** un `refreshIfStale` asíncrono en cada cambio de ruta (`NavigationEnd`) para que una revocación de permisos surta efecto en la siguiente navegación sin repetir peticiones al navegar rápido.
+   - Tras una acción del usuario que dispara un efecto asíncrono, usar un **sondeo de confirmación acotado** (p. ej. 8 intentos, espera de 1 s a 5 s) que se detiene con el desenlace, nunca un sondeo periódico indefinido.
    - En colas operativas activas (~30 s), consultar solo `pageSize: 1` para comparar `totalCount` y mostrar un banner *«Hay cambios disponibles — Actualizar»* en vez de reordenar la tabla bajo el puntero del usuario.
    - **No sondear** pantallas de consulta puntual, catálogos o formularios estáticos.
 3. Ver especificación completa en [client-poll-scheduler-spec.md](./references/client-poll-scheduler-spec.md).

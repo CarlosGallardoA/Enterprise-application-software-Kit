@@ -29,13 +29,13 @@ Aplicar [technology-security-policy.md](../security-and-auditability/references/
 1. **La API jamás migra el esquema ni crea administradores al arrancar**:
    - Un reinicio o reciclado de proceso en producción nunca debe disparar `DDL` ni alterar cuentas privilegiadas.
    - Existe una **única herramienta CLI independiente (`DbMigrator`)** autorizada para migrar esquemas, sembrar catálogos cerrados o ejecutar mantenimiento criptográfico offline.
-2. **Tres identidades de base de datos separadas en entornos reales**:
-   - `runtime` (API): solo lectura/escritura de datos (`DML`) y bloqueos transaccionales de aplicación; **cero permisos DDL**, cero `db_owner`/`sysadmin`.
-   - `migrator` (proceso de release): permisos `DDL` inyectados únicamente durante la ejecución aprobada del migrador; jamás instalados en el servidor web.
-   - `break_glass` (soporte excepcional): rol auditado otorgado temporalmente por el DBA bajo ticket para scripts transaccionales de emergencia que exigen motivo, usuario activo responsable y registro obligatorio en bitácora.
-3. **Protocolo de SQL revisado + manifiesto `SHA-256` fuera de Desarrollo**:
-   - Solo en Desarrollo local contra base loopback se permite migración directa automática.
-   - En QA/PreProd/Prod: el pipeline compila el migrador y genera `--script-only migrations.sql` + `manifest.json` (con hashes `SHA-256` del SQL y los binarios). Tras revisión humana y respaldo verificado, el release ejecuta ese archivo exacto exigiendo `--target-database`, `--backup-ticket`, `--reviewed-script` y `--reviewed-sha256` coincidente.
+2. **Identidades de base de datos separadas**:
+   - En todo entorno no local, la identidad `runtime` (API) solo tiene lectura/escritura de datos (`DML`) y bloqueos transaccionales de aplicación; **cero permisos DDL**, cero `db_owner`/`sysadmin`.
+   - **Recomendado para Producción** (y PreProd si la replica): tres identidades separadas, sumando `migrator` (permisos `DDL` inyectados únicamente durante la ejecución aprobada del migrador; jamás instalados en el servidor web) y `break_glass` (rol auditado otorgado temporalmente por el DBA bajo ticket para scripts transaccionales de emergencia que exigen motivo, usuario activo responsable y registro obligatorio en bitácora).
+3. **Guardas escalonadas del migrador según el destino** (falla cerrada: si el ambiente no está declarado, se trata como Producción):
+   - **Desarrollo + loopback** (`localhost`, `127.0.0.1`, `::1`, instancia local embebida): migración directa.
+   - **Cualquier destino no loopback** (QA, servidores compartidos): exige `--target-database <NombreExacto>` idéntico a la base de la cadena de conexión y aborta **antes de conectar** si falta o difiere. Es la guarda barata contra una cadena de conexión equivocada heredada de secretos locales o variables del agente.
+   - **Producción** (y opcionalmente PreProd): protocolo completo de SQL revisado. El pipeline compila el migrador y genera `--script-only migrations.sql` + `manifest.json` (con hashes `SHA-256` del SQL y los binarios). Tras revisión humana y respaldo verificado, el release ejecuta ese archivo exacto con la identidad `migrator`, exigiendo además `--backup-ticket`, `--reviewed-script` y `--reviewed-sha256` coincidente; jamás migración directa.
 4. **Validación *Fail-Fast* en el arranque y triple aislamiento físico en disco**:
    - **Configuración validada al iniciar (`ValidateOnStart`)**: toda sección de configuración (conexiones, orígenes HTTPS, presupuestos de memoria `> 0`, plazos Outbox y llaves criptográficas) se valida en el arranque del proceso; si falta un valor crítico (p. ej. la llave de cifrado documental), la API **se niega a arrancar de inmediato** en lugar de degradarse en silencio a texto plano o fallar a mitad de una petición.
    - **Triple separación en servidor**:
@@ -52,19 +52,19 @@ Consulta el detalle completo paso a paso en:
 
 ## Compuertas mínimas del Pipeline CI antes de publicar artefactos
 
-1. Checkout limpio (`clean: true`) para no arrastrar residuos entre ejecuciones.
+1. Checkout limpio (`clean: true`) para no arrastrar residuos entre ejecuciones, con tareas/acciones de CI y versiones de SDK fijadas por versión exacta o SHA (ver checklist).
 2. Escaneo de secretos en el repositorio con salida redactada (cero exposición del secreto en logs si falla).
 3. Compuerta obligatoria de seguridad de tecnologías: inventario real, soporte y avisos vigentes de runtimes, dependencias directas/transitivas/de desarrollo, bibliotecas nativas, herramientas de CI, SO e imágenes finales; fallar ante cualquier vulnerabilidad aplicable o verificación incompleta, sin excluir severidades ni silenciar errores.
 4. Validación previa de archivos de entorno del cliente (cortando con `exit 1` si falta configurar `apiUrl` u orígenes requeridos).
 5. Compilación en modo `Release` con **0 advertencias y 0 errores**.
 6. Ejecución de pruebas unitarias + pruebas de integración contra instancia de base de datos efímera privada del job, seguida de paso de limpieza con condición `always()`.
-7. Linters de código, formato, gobierno documental (`check-docs-governance.mjs`), fronteras arquitectónicas (`check-architecture-boundaries.mjs`), higiene (`audit-code-hygiene.mjs`) y sistema de diseño + paridad i18n (`check-design-system.mjs`, `check-i18n-parity.mjs`).
+7. Linters de código, formato en modo verificación (`dotnet format --verify-no-changes`, `prettier --check .` o equivalente), gobierno documental (`check-docs-governance.mjs`), fronteras arquitectónicas (`check-architecture-boundaries.mjs`), higiene (`audit-code-hygiene.mjs`) y sistema de diseño + paridad i18n (`check-design-system.mjs`, `check-i18n-parity.mjs`).
 8. Suite E2E de endurecimiento (CSP, Trusted Types, retornos inseguros) sobre el artefacto web compilado.
-9. Verificación estructural de los 3 artefactos separados antes de subirlos: `api` (binarios + manifiestos + config de servidor), `web` (bundle + reglas de reescritura SPA + `i18n`) y `reviewed-migrations` (`migrations.sql` + `manifest.json` + binario migrador).
+9. Verificación estructural de los 3 artefactos separados antes de subirlos: `api` (binarios + manifiestos + config de servidor), `web` (bundle + reglas de reescritura SPA + `i18n`) y `reviewed-migrations` (`migrations.sql` + `manifest.json` + binario migrador), más escaneo de vulnerabilidades del artefacto final y de su imagen/SO base.
 
 ## Verificación antes de dar por cerrado un cambio operativo
 
 - [ ] El informe `docs/auditorias/seguridad-tecnologias.md` identifica versiones, fuentes, fecha y hashes/digests verificados; no quedan vulnerabilidades conocidas aplicables ni comprobaciones pendientes y los procesos desplegados usan los artefactos corregidos.
-- [ ] El migrador rechaza ejecutarse contra una base remota si falta el ticket de respaldo, el nombre exacto de la base o no coincide el `SHA-256` del script revisado.
+- [ ] El migrador rechaza ejecutarse contra cualquier base no loopback sin `--target-database` coincidente, y en Producción (y PreProd si se adoptó) además sin ticket de respaldo, script revisado o `SHA-256` coincidente; un ambiente sin declarar se trata como Producción.
 - [ ] `index.html` y archivos JSON de traducción sin hash se sirven con `Cache-Control: no-cache`, mientras los assets JS/CSS con hash usan `public, max-age=31536000, immutable`.
 - [ ] `/health/live` y `/health/ready` públicos no filtran detalles internos, y `/health/details` responde `401` sin sesión administrativa.

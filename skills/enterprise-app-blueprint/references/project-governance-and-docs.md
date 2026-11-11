@@ -4,7 +4,7 @@
 
 Un proyecto empresarial degrada rápido cuando las reglas se dispersan en conversaciones, comentarios de código o documentos contradictorios. Para evitarlo:
 
-1. **`AGENTS.md` en la raíz es un mapa corto (80–120 líneas máx.)**:
+1. **`AGENTS.md` en la raíz es un mapa corto (objetivo 80–120 líneas; `check-docs-governance.mjs` falla por encima de 120, ajustable con `--max-agents-lines` solo con justificación)**:
    - Explica en un párrafo qué resuelve el sistema.
    - Resume las capas de arquitectura en 5–6 viñetas.
    - Muestra una tabla `"Qué buscas → Dónde vive"` apuntando a `docs/` y `DESIGN.md`.
@@ -12,7 +12,7 @@ Un proyecto empresarial degrada rápido cuando las reglas se dispersan en conver
    - Mantiene el registro vivo de especificaciones E2E (nombre del archivo + flujo que cubre).
    - **Nunca** se agregan reglas detalladas de vuelta en `AGENTS.md`: toda regla nueva va al archivo específico de `docs/reglas/` o `docs/estandares/`.
 
-2. **Taxonomía obligatoria de `docs/`**:
+2. **Taxonomía de `docs/`** (obligatorias para el validador: `arquitectura/`, `reglas/`, `estandares/`, `operacion/`, `historial/`; opcionales canónicas: `guias/`, `decisiones/`, `auditorias/`, `planes/`, `requisitos/`):
 
 | Carpeta | Qué contiene | Ejemplo |
 | --- | --- | --- |
@@ -27,8 +27,9 @@ Un proyecto empresarial degrada rápido cuando las reglas se dispersan en conver
 | `requisitos/` | Especificaciones funcionales originales del dominio. | `especificacion-requerimientos.md` |
 | `historial/` | Registro histórico congelado (`append-only`) de cada tarea completada, fase por fase. | `changelog.md` |
 
-   - **Cero `.md` sueltos en la raíz de `docs/`**: incluso cuando el usuario pide simplemente «crea un `.md`» sin especificar ruta, el archivo se ubica en la subcarpeta de `docs/` que corresponda a su propósito. `docs/AGENTS.md` es el **único** archivo permitido en la raíz de `docs/`.
+   - **Cero archivos sueltos en la raíz de `docs/`** (ni `.md` ni imágenes, diagramas o exportaciones): incluso cuando el usuario pide simplemente «crea un `.md`» sin especificar ruta, el archivo se ubica en la subcarpeta de `docs/` que corresponda a su propósito, y un diagrama vive junto al documento que lo usa. `docs/AGENTS.md` es el **único** archivo permitido en la raíz de `docs/`.
    - **Actualizar antes que duplicar**: antes de crear un `.md` nuevo, verificar si ya existe uno del mismo tema en `docs/` y actualizarlo. Si ningún directorio encaja, crear una subcarpeta descriptiva en español. Los archivos estructurales de raíz (`AGENTS.md`, `DESIGN.md`, `README.md`) permanecen siempre en la raíz.
+   - **`PRODUCT.md` (opcional, raíz)**: contexto de producto para agentes de diseño/UX (plataforma, usuarios, tono, objetivos); también permanece en la raíz junto a `DESIGN.md`, sin duplicar reglas de `docs/`.
 
 ## Reglas de proceso y flujo de trabajo
 
@@ -39,11 +40,12 @@ Un proyecto empresarial degrada rápido cuando las reglas se dispersan en conver
   1. **Alcance y cambios realizados**: qué problema, fase o flujo se resolvió, decisiones clave y enlaces relativos a planes, decisiones o matrices en `docs/`.
   2. **Verificación real y límites explícitos**: detallar con exactitud qué compilaciones, pruebas, linters y validadores se ejecutaron y aprobaron, **y declarar con total honestidad qué NO se ejecutó o qué límite permaneció** (p. ej., si faltaba motor SQL local, IIS o sandbox de ejecución, o si no hubo commit/despliegue). Nunca afirmar verificaciones ni coberturas no corridas.
 - Toda narrativa histórica (*"se corrigió el hallazgo X"*, *"a pedido del usuario"*) vive **exclusivamente aquí** o en `docs/decisiones/`, jamás como comentario conversacional en el código fuente.
+- **Validación automática**: `check-docs-governance.mjs` revisa **todos** los encabezados (numeración presente, sin duplicados ni saltos, orden descendente y fechas no crecientes). Un historial heredado previo a esta regla no se reescribe: se declara su límite con el marcador `<!-- governance:changelog-from N -->` (o `--changelog-from N`) y se valida desde arriba hasta la entrada `N`; aun así, una entrada con número vigente extraviada en el historial heredado se reporta. Los enlaces solo se validan en la entrada más reciente, porque las anteriores son congeladas.
 
 ### 2. Catálogo vivo de endpoints HTTP
 - Todo endpoint nuevo o modificado se documenta en la misma tarea dentro del catálogo ejecutable del repositorio (archivo `.http`, colección declarativa o especificación verificada), detallando método, ruta, autenticación requerida, protección CSRF/antiforgery, cuerpo de entrada y códigos de respuesta esperados (`200/201/204` y errores tipados).
 
 ### 3. Seguridad estricta sobre Git y evidencias locales
 - **Operaciones mutantes de Git**: un agente nunca ejecuta `commit`, `push`, `merge`, `rebase`, `reset` ni borrado/creación de ramas por iniciativa propia; deja los cambios verificados en el árbol de trabajo y solo usa comandos de lectura (`status`, `diff`, `log`) salvo instrucción explícita para esa tarea puntual.
-- **Capturas antes/después fuera de Git**: las capturas de pantalla y galerías HTML generadas para validar cambios visuales se guardan exclusivamente en rutas ignoradas por Git (`docs/auditorias/evidencias/`, `test-results/`). En el repositorio solo se versionan los informes `.md` y las pruebas automatizadas que las generan.
+- **Capturas antes/después y artefactos de agentes fuera de Git**: las capturas de pantalla, galerías HTML, volcados de salida, borradores y archivos intermedios que genera un agente se guardan exclusivamente en rutas ignoradas por Git (`docs/auditorias/evidencias/`, `test-results/` o una carpeta dedicada como `.agent-artifacts/`, todas en `.gitignore`). En el repositorio solo se versionan los informes `.md` y las pruebas automatizadas que las generan.
 - **Cero secretos en el árbol de trabajo**: jamás escribir credenciales reales, tokens o llaves en ningún archivo dentro del repositorio, ni siquiera en scripts temporales (una vez en el historial de Git, un borrado posterior no revoca la exposición).

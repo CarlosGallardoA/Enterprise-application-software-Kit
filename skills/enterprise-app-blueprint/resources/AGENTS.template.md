@@ -30,8 +30,9 @@
 - Antes de usar tecnologías o cerrar una entrega, cargar [`docs/reglas/seguridad-de-tecnologias.md`](./docs/reglas/seguridad-de-tecnologias.md): bloquear versiones con vulnerabilidades conocidas aplicables de cualquier severidad, sin soporte o sin evidencia vigente suficiente.
 - Backend: `<comando build>`, `<comando test>`, `<comando lint/format>`.
 - Frontend: `<comando build>`, `<comando test>`, `<comando lint>`, `<comando format:check>`.
-- Ejecutar formateadores, linters y validadores de arquitectura/sistema de diseño antes de reportar cualquier tarea como terminada.
-- **Regla inquebrantable de pruebas**: prohibido alterar, relajar o saltar (`skip`) un test solo para que pase; si falla, corregir el error real en el código de producción (ver [`docs/reglas/reglas-generales.md`](./docs/reglas/reglas-generales.md)).
+- Documentación: `node tools/quality/check-docs-governance.mjs --root . --e2e-dir <carpeta-e2e>` (copia versionada del validador, para que CI no dependa de una instalación local de skills).
+- Ejecutar formateadores (modo verificación), linters y validadores de arquitectura/sistema de diseño antes de reportar cualquier tarea como terminada.
+- **Regla inquebrantable de pruebas**: prohibido alterar, relajar o saltar (`skip`) un test solo para que pase; si falla, corregir el error real en el código de producción. Solo se admite el salto condicional ligado a un entorno/perfil explícito, con motivo escrito y un perfil versionado que sí lo ejecuta (ver [`docs/reglas/reglas-generales.md`](./docs/reglas/reglas-generales.md)).
 
 ## Testing e2e
 

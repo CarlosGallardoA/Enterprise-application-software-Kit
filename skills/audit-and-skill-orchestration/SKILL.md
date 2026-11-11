@@ -45,11 +45,11 @@ Antes de seleccionar tecnologías, remediar avisos o aprobar cualquier entrega, 
 ## 1. Protocolo obligatorio para Auditorías de Seguridad (`security-audit`)
 
 1. **Activación innegociable**:
-   - Ante cualquier solicitud de auditoría de seguridad, pen test o revisión profunda de vulnerabilidades, cargar y seguir **`security-audit`** oficial de Cloudflare (`https://github.com/cloudflare/security-audit-skill`). Si no está disponible en el entorno activo, instalarla o detenerse y avisar al usuario antes de improvisar.
+   - Ante cualquier solicitud de auditoría de seguridad, pen test o revisión profunda de vulnerabilidades, cargar y seguir **`security-audit`** oficial de Cloudflare (`https://github.com/cloudflare/security-audit-skill`). Si no está disponible en el entorno activo, **instalarla o detenerse**: instalarla con el mecanismo de skills del agente en uso (su comando o su directorio de skills de usuario o de proyecto, resuelto por el propio agente) y comprobar que aparece como skill cargable; si no es posible, detenerse y avisar al usuario antes de improvisar. Nunca fijar rutas absolutas de una máquina concreta (`C:\Users\<usuario>\...`, `/home/<usuario>/...`) en el repositorio, en planes ni en estas instrucciones: las rutas se expresan relativas al directorio personal (`~`, `$HOME`, `%USERPROFILE%`) o al repositorio.
 2. **Separación estricta entre `Full audit mode` y `Guidance mode`**:
    - **Auditoría completa de código / pen test / reporte formal (`Full audit mode`)**:
      - Ejecutar las **6 fases completas**: Reconocimiento → *Coverage Ledger* explícito previo → Oleadas paralelas de *Hunters* aislados → Validación independiente por *Verifiers* → Registros estructurados de hallazgos → Revisión final.
-     - Mantener el repositorio auditado en **estricto modo solo lectura** (respetando cambios locales sin confirmar del usuario) y escribir artefactos por defecto fuera del repositorio (`~/security-audit-skill/<repo>/run-<N>`), salvo ruta explícita pedida por el usuario.
+     - Mantener el repositorio auditado en **estricto modo solo lectura** (respetando cambios locales sin confirmar del usuario) y escribir artefactos por defecto fuera del repositorio, en una ruta portable relativa al directorio personal (`~/security-audit-skill/<repo>/run-<N>`, equivalente en Windows a `%USERPROFILE%\security-audit-skill\<repo>\run-<N>`), salvo ruta explícita pedida por el usuario.
      - Separar rigurosamente hallazgos en `confirmed`, `needs_validation` y `rejected`. Nunca marcar como `confirmed` controles dependientes de infraestructura externa no inspeccionada ni emitir puntajes numéricos arbitrarios sin evidencia verificable.
      - No ejecutar código ni binarios del objetivo salvo que se haya comprobado aislamiento completo de sandbox a nivel de sistema operativo.
    - **Revisión focalizada durante desarrollo o remediación (`Guidance mode`)**:
@@ -73,11 +73,11 @@ Al crear, rediseñar o auditar pantallas, combinar las 4 piezas en orden claro:
 3. **Auditoría estructural de 5 fases (`design-consistency-auditor` + `impeccable audit/critique`)**:
    - **Fase 1 (Tokens y color)**: cero hex crudos, cero `--brand-*` fuera de `tokens.css`, cero superficies tintadas artificiales o degradados decorativos no autorizados (*anti-AI-slop*).
    - **Fase 2 (Reutilización de componentes)**: reutilizar botones, modales, estados vacíos/carga/error, controles binarios Sí/No y líneas de tiempo canónicas antes de crear variantes nuevas.
-   - **Fase 3 (Espaciado y layout por contenedor)**: escala cerrada de 6 pasos y rejillas `minmax(min(100%, Xrem), 1fr)` sin desborde horizontal en móvil (`360px–430px`) ni escritorio.
-   - **Fase 4 (Tipografía e i18n)**: escala cerrada de 6 tamaños, `tabular-nums` en identificadores/métricas y cero literales visibles fuera de los diccionarios i18n diferidos.
-   - **Fase 5 (Accesibilidad y endurecimiento — `impeccable harden` + `polish`)**: contraste efectivo `>= 4.5:1` (`>= 3:1` en bordes de controles), objetivos táctiles `>= 44 × 44 px`, anillo de foco único, textos largos/nombres compuestos sin romper layout, protección contra doble envío y máximo 1–2 pasadas visuales acotadas (escritorio + móvil), guardando capturas locales solo en rutas ignoradas por Git (`docs/auditorias/evidencias/`).
+   - **Fase 3 (Espaciado y layout por contenedor)**: escala cerrada de 6 pasos (con la excepción documentada de detalles finos de `1–2px` y de tokens estructurales con nombre) y rejillas `minmax(min(100%, Xrem), 1fr)` sin desborde horizontal en móvil (`360px–430px`) ni escritorio.
+   - **Fase 4 (Tipografía e i18n)**: escala cerrada de 6 tamaños más los tokens de display fluido documentados (`--text-*-fluid` con `clamp()`, reservados a titulares), `tabular-nums` en identificadores/métricas, cero literales visibles fuera de los diccionarios i18n diferidos y cero claves usadas en código que no existan en ellos.
+   - **Fase 5 (Accesibilidad y endurecimiento — `impeccable harden` + `polish`)**: contraste efectivo `>= 4.5:1` (`>= 3:1` en bordes de controles) documentado por token y comprobado con la herramienta que nombra `DESIGN.md`, objetivos táctiles `>= 44 × 44 px`, anillo de foco único que sobrevive en Alto Contraste (`outline` transparente junto al `box-shadow`), textos largos/nombres compuestos sin romper layout, protección contra doble envío y máximo 1–2 pasadas visuales acotadas (escritorio + móvil), guardando capturas locales solo en rutas ignoradas por Git (`docs/auditorias/evidencias/`).
 4. **Compuerta determinista obligatoria**:
-   - Cerrar siempre ejecutando `check-design-system.mjs` y las pruebas de interfaz/E2E correspondientes.
+   - Cerrar siempre ejecutando `check-design-system.mjs` y `check-i18n-parity.mjs` **o sus equivalentes del proyecto**, más las pruebas de interfaz/E2E correspondientes. Un checker propio es válido si cubre las mismas comprobaciones y corre dentro de la compuerta de `lint` (SICRE, por ejemplo, ejecuta `scripts/check-design-system.js` y `eslint-rules/feature-boundaries.test.cjs` dentro de `npm run lint`); en ese caso manda el del proyecto y el del kit queda como contraste puntual, sin exigir ambos.
 
 ---
 
@@ -93,5 +93,5 @@ Al crear, rediseñar o auditar pantallas, combinar las 4 piezas en orden claro:
 ## Checklist de orquestación antes de cerrar
 
 - [ ] Si la tarea fue una auditoría, se respetó el modo **solo lectura** sobre el repositorio objetivo, se usó `security-audit` oficial (o sus reglas de evidencia verificable `confirmed` / `needs_validation`) y no se emitieron calificaciones sin sustento.
-- [ ] Si la tarea tocó UI/UX, se aplicaron las 5 fases de consistencia visual respetando `DESIGN.md` + tokens semánticos y pasó `check-design-system.mjs`.
+- [ ] Si la tarea tocó UI/UX, se aplicaron las 5 fases de consistencia visual respetando `DESIGN.md` + tokens semánticos y pasó `check-design-system.mjs` o el checker equivalente del proyecto dentro de `lint`.
 - [ ] Ninguna prueba existente o nueva fue debilitada, modificada para coincidir con un bug ni saltada (`skip`) para forzar la aprobación.

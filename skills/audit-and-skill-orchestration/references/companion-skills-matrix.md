@@ -9,7 +9,7 @@ Este documento detalla cómo combinar las skills de construcción de `My_Project
 ### Etapa 1 — Auditoría adversarial (`security-audit` en *Full audit mode*)
 1. **Reglas inviolables durante la auditoría**:
    - El repositorio auditado permanece **100 % intacto** (no editar archivos, no formatear, no tocar cambios sin commitear del usuario, no ejecutar comandos `git` mutantes).
-   - Escribir el *coverage ledger*, notas de oleadas y reportes en `~/security-audit-skill/<repo>/run-<N>` (salvo que el usuario pida explícitamente otra ruta).
+   - Escribir el *coverage ledger*, notas de oleadas y reportes en `~/security-audit-skill/<repo>/run-<N>` (ruta relativa al directorio personal y portable entre sistemas; nunca una ruta absoluta de una máquina concreta), salvo que el usuario pida explícitamente otra ruta.
    - Cubrir sistemáticamente todos los componentes en el *Coverage Ledger* antes de lanzar las oleadas de búsqueda (*Hunter waves*) y validar cada candidato con verificadores independientes (*Verifiers*) trazando fuente → controles reales en código → sumidero.
    - Clasificar cada hallazgo con rigor probatorio:
      - `confirmed`: explotabilidad demostrada directamente en el código inspeccionado.
@@ -35,7 +35,7 @@ DESIGN.md + tokens.css (Autoridad Suprema)
    ├── 1. Descubrimiento UX: ui-ux-pro-max + impeccable (shape / Operate mode)
    ├── 2. Construcción limpia: institutional-design-system-ux + hexagonal-vertical-slices
    ├── 3. Auditoría de 5 fases: design-consistency-auditor + impeccable (critique / audit / harden)
-   └── 4. Compuertas automáticas: check-design-system.mjs + tests UI/E2E (contraste + teclado + móvil)
+   └── 4. Compuertas automáticas: check-design-system.mjs + check-i18n-parity.mjs (o equivalentes del proyecto en lint) + tests UI/E2E (contraste + teclado + móvil)
 ```
 
 ### Reglas de armonización entre las 4 skills de UI/UX
@@ -60,10 +60,10 @@ Cuando el usuario pide auditar **arquitectura**, **calidad de código**, **cober
    - Elaborar primero el inventario explícito de módulos/capas revisados (*Coverage Ledger*).
    - Citar archivo y línea exacta en cada hallazgo y distinguir hechos verificados (`confirmed`) de puntos que requieren validación en entorno externo (`needs_validation`).
 2. Combinar con el criterio experto y los scripts deterministas de la skill correspondiente:
-   - Arquitectura → `hexagonal-vertical-slices` + `check-architecture-boundaries.mjs`.
+   - Arquitectura → `hexagonal-vertical-slices` + `check-architecture-boundaries.mjs` (o la regla de fronteras equivalente del proyecto, p. ej. una regla ESLint de *feature boundaries* con su prueba dentro de `lint`).
    - Limpieza y rendimiento → `clean-code-and-standards` + `audit-code-hygiene.mjs`.
    - Pruebas e integridad → `layered-testing-strategy` (verificando ausencia de mocks frágiles, casteos parciales `{ } as T`, pausas fijas `sleep` y cualquier indicio de *test tampering* o tests saltados).
-   - Diseño y accesibilidad → `institutional-design-system-ux` + `design-consistency-auditor` + `impeccable audit` + `check-design-system.mjs`.
+   - Diseño y accesibilidad → `institutional-design-system-ux` + `design-consistency-auditor` + `impeccable audit` + `check-design-system.mjs` (o el checker de diseño propio del proyecto).
    - Operación y despliegue → `transactional-outbox-and-polling` + `production-release-and-migrations`.
 
 ---
@@ -74,4 +74,4 @@ Cuando el usuario pide auditar **arquitectura**, **calidad de código**, **cober
 2. **Consulta de librerías (`context7-mcp`)**: si la feature requiere APIs específicas del framework, ORM o SDK instalado, consultar la versión exacta antes de diseñar los adaptadores.
 3. **Implementación por capas (`hexagonal-vertical-slices` + `clean-code-and-standards` + `security-and-auditability` + `institutional-design-system-ux`)**: construir `domain` → `application` → `infrastructure` / `ui`.
 4. **Pruebas honestas (`layered-testing-strategy`)**: cubrir dominio, casos de uso con fakes en memoria, UI con i18n real, integración con BD efímera y flujo E2E — **corrigiendo siempre el código de producción cuando un test falle, jamás maquillando el test**.
-5. **Revisión pre-cierre**: correr `check-architecture-boundaries.mjs`, `audit-code-hygiene.mjs`, `check-design-system.mjs`, pase de `design-consistency-auditor` (si hubo cambios UI) y revisión `Guidance mode` de `security-audit` (si hubo cambios en permisos, sesión, entradas o archivos), actualizando finalmente `docs/historial/changelog.md`.
+5. **Revisión pre-cierre**: correr `check-architecture-boundaries.mjs`, `audit-code-hygiene.mjs`, `check-design-system.mjs` (o sus equivalentes del proyecto cuando ya corren dentro de `lint`), pase de `design-consistency-auditor` (si hubo cambios UI) y revisión `Guidance mode` de `security-audit` (si hubo cambios en permisos, sesión, entradas o archivos), actualizando finalmente `docs/historial/changelog.md`.

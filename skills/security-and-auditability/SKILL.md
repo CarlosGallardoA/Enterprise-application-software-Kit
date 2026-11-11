@@ -18,7 +18,7 @@ Integra controles de seguridad de nivel institucional desde el diseño de la arq
 ## Regla obligatoria de versiones y vulnerabilidades
 
 - Cargar y cumplir [technology-security-policy.md](./references/technology-security-policy.md) antes de seleccionar versiones o declarar un cambio listo: usar ramas con soporte y parches vigentes verificados contra avisos oficiales durante la tarea.
-- Bloquear versiones con vulnerabilidades conocidas aplicables de **cualquier severidad**, tecnologías sin soporte y verificaciones incompletas. Actualizar, sustituir o retirar el componente; una mitigación no autoriza conservar una versión afectada.
+- Bloquear versiones con vulnerabilidades conocidas aplicables de **cualquier severidad**, tecnologías sin soporte y verificaciones incompletas. Actualizar, sustituir o retirar el componente; una mitigación no autoriza conservar una versión afectada salvo excepción controlada con responsable, control compensatorio y vencimiento.
 - Cubrir runtime, dependencias directas/transitivas/de desarrollo, bibliotecas nativas, CI, SO y artefacto final. Un `npm audit` o `composer audit` limpio no verifica todo el stack.
 - Entregar evidencia por versión, entorno, artefacto y fecha con estado `APROBADO` o `BLOQUEADO`; no prometer ausencia de vulnerabilidades desconocidas.
 
@@ -45,18 +45,20 @@ Integra controles de seguridad de nivel institucional desde el diseño de la arq
 - Ver [auth-session-and-idor-controls.md](./references/auth-session-and-idor-controls.md).
 
 ### 3. Recuperación de credenciales endurecida
-- Hashear códigos de un solo uso con **HMAC-SHA-256** usando clave secreta derivada por propósito + identidad del usuario y comparación en tiempo constante (jamás SHA-256 plano sobre códigos cortos enumerables offline).
+- Hashear códigos de un solo uso con **HMAC-SHA-256** usando clave secreta derivada por propósito, ligada a la identidad del usuario (en la derivación o dentro del mensaje), y comparación en tiempo constante (jamás SHA-256 plano sobre códigos cortos enumerables offline).
 - Serializar generación, conteo de intentos (máx. 5) y consumo mediante un **bloqueo transaccional exclusivo por usuario** en la base de datos.
 - Proteger el código con cifrado autenticado antes de encolarlo en el Outbox y descartar eventos vencidos sin enviarlos.
 
 ### 4. Seguridad documental: inspección previa + `AES-256-GCM` con AAD
 - **Antes de almacenar o abrir transacción**: validar lista blanca estricta de extensiones y MIME derivado por el servidor, cuotas individuales y acumuladas, contención estricta de rutas contra *path traversal*, límites de decodificación de imágenes e inspección estructural de plantillas PDF (rechazando cifrado, acciones automáticas, JavaScript, archivos embebidos, XFA y referencias externas; documentar que no sustituye antivirus/CDR externo).
-- **En reposo**: cifrar cada archivo con `AES-256-GCM`, nonce criptográfico único por archivo, encabezado versionado con `keyId` y **datos autenticados adicionales (`AAD`) ligados a la clave/ruta de almacenamiento** (impidiendo intercambiar archivos cifrados entre expedientes). Fallar en el arranque si falta la llave de cifrado.
+- **En reposo**: cifrar cada archivo con `AES-256-GCM`, nonce criptográfico único por archivo, encabezado versionado con `keyId` y **datos autenticados adicionales (`AAD`) ligados a la clave/ruta de almacenamiento** (impidiendo intercambiar archivos cifrados entre expedientes). Fallar en el arranque si falta la llave de cifrado. Un formato heredado sin `AAD` tiene fecha de retiro y herramienta de re-encriptación; después se rechaza.
+- **Capacidad**: tope global de cuerpo con límite explícito por endpoint de carga, reserva de memoria por carga y capacidad acumulada por expediente serializada con un bloqueo de aplicación.
 - Ver [document-crypto-and-upload-safety.md](./references/document-crypto-and-upload-safety.md).
 
 ### 5. Endurecimiento Web y HTTP
 - **API**: CORS base vacío con orígenes HTTPS explícitos por entorno (rechazando HTTP y `localhost` fuera de desarrollo), rechazo en el arranque de adaptadores simulados (*fakes*) fuera de desarrollo, protección CSRF/antiforgery en todas las mutaciones con cookie, límites de tasa (*rate limiting*) por cuenta e IP, `HSTS` (365 días), `COOP`/`CORP` y `Permissions-Policy`.
-- **Cliente Web (SPA)**: `Content-Security-Policy` sin scripts inline + `Trusted Types`, `X-Frame-Options: DENY` / `frame-ancestors 'none'`, desactivación de `inlineCritical` que inyecte manejadores inline, validación estricta de `returnUrl` (rechazando `//`, `\`, esquemas y controles) y visor documental que jamás construye URLs confiables sobre HTML disfrazado.
+- **Llavero de protección de datos** (cookies, antiforgery, payloads protegidos): persistir el anillo de claves en una ubicación durable y compartida por las instancias, protegido en reposo (DPAPI de máquina, certificado X.509 o KMS), y **fallar al arrancar fuera de Desarrollo** si falta la ubicación o su protección; un anillo efímero en memoria invalida todas las sesiones y los secretos protegidos en cada reciclado.
+- **Cliente Web (SPA)**: `Content-Security-Policy` sin scripts inline + `Trusted Types` con `require-trusted-types-for 'script'` y **lista explícita de nombres de política permitidos** propia del proyecto (p. ej. en SICRE `trusted-types angular angular#bundler angular#unsafe-bypass`; nunca `'allow-duplicates'` ni comodines sin justificar). `style-src 'unsafe-inline'` solo se admite como excepción documentada y justificada (p. ej. estilos inline que el framework inyecta en tiempo de ejecución), con su motivo y revisión en la documentación de seguridad; jamás extenderla a `script-src`. `X-Frame-Options: DENY` / `frame-ancestors 'none'`, desactivación de `inlineCritical` que inyecte manejadores inline, validación estricta de `returnUrl` (rechazando `//`, `\`, esquemas y controles) y visor documental que jamás construye URLs confiables sobre HTML disfrazado.
 
 ### 6. Separación entre Bitácora de Negocio y Logs Estructurados libres de PII
 - **Bitácora de negocio**: persistida en base de datos dentro de la misma transacción del cambio (`quién`, `qué`, `antes/después`, `cuándo`).
@@ -68,6 +70,6 @@ Integra controles de seguridad de nivel institucional desde el diseño de la arq
 - [ ] La política de tecnologías está verificada en todo el alcance: inventario real, soporte vigente, avisos oficiales consultados y cero vulnerabilidades conocidas aplicables pendientes, de cualquier severidad; incertidumbre implica `BLOQUEADO`.
 - [ ] Cerrar sesión revoca el ticket en el servidor (una copia previa de la cookie deja de funcionar de inmediato).
 - [ ] Revocar un permiso o desactivar al usuario bloquea la siguiente petición sin esperar al vencimiento de la cookie.
-- [ ] El servidor falla explícitamente al arrancar fuera de Desarrollo si algún adaptador simulado sigue activo o falta la clave documental.
+- [ ] El servidor falla explícitamente al arrancar fuera de Desarrollo si algún adaptador simulado sigue activo, falta la clave documental o el llavero de protección de datos no está persistido y protegido.
 - [ ] Ningún log ni columna `lastError` persiste payloads, correos completos innecesarios, secretos ni mensajes crudos de excepción con PII.
 - [ ] La suite E2E de seguridad pasa con `CSP` + `Trusted Types` activos y rechaza redirecciones abiertas en login.

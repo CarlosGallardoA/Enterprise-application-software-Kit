@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Generador de gobierno documental para aplicaciones nuevas (Node.js soportado y parcheado, cero dependencias).
 // Crea AGENTS.md, DESIGN.md, .editorconfig, .gitignore y las 10 subcarpetas canónicas de docs/
-// con sus documentos base enlazados y la primera entrada numerada de docs/historial/changelog.md.
+// (5 obligatorias para check-docs-governance.mjs + 5 opcionales) con sus documentos base enlazados,
+// la política de tecnologías, el informe inicial de seguridad de tecnologías (estado BLOQUEADO hasta
+// la primera corrida real) y la primera entrada numerada de docs/historial/changelog.md.
 //
 // Uso:
 //   node scaffold-project-docs.mjs --target <ruta-proyecto> --name "MiSistema" [--force]
@@ -85,6 +87,10 @@ function main() {
     renderTemplate(fs.readFileSync(path.join(resourcesDir, 'reglas-generales.template.md'), 'utf8'), args.name, todayIso)
   );
   emit('docs/reglas/seguridad-de-tecnologias.md', technologySecurityPolicy);
+  emit(
+    'docs/auditorias/seguridad-tecnologias.md',
+    renderTemplate(fs.readFileSync(path.join(resourcesDir, 'seguridad-tecnologias.template.md'), 'utf8'), args.name, todayIso)
+  );
   emit(
     'docs/historial/changelog.md',
     renderTemplate(fs.readFileSync(path.join(resourcesDir, 'changelog.template.md'), 'utf8'), args.name, todayIso)

@@ -5,8 +5,11 @@
 *.local
 secrets/
 *.pfx
+*.p12
 *.pem
 *.key
+*.user
+appsettings.*.local.json
 
 # Dependencias y artefactos de compilación
 node_modules/
@@ -20,10 +23,17 @@ __pycache__/
 .venv/
 coverage/
 
+# Logs de compilación, diagnóstico y ejecución local
+*.log
+*.binlog
+logs/
+
 # Resultados de pruebas y evidencia visual local (no versionar imágenes de revisión)
 test-results/
 playwright-report/
 docs/auditorias/evidencias/
+# Artefactos de trabajo de agentes (borradores, volcados, capturas intermedias)
+.agent-artifacts/
 
 # Editores y sistema operativo
 .idea/

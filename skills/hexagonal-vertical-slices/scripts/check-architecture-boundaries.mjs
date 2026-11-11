@@ -3,6 +3,9 @@
  * Validador universal y agnóstico de fronteras arquitectónicas (Hexagonal + Vertical Slices).
  * Sin dependencias externas (Node.js soportado y parcheado). Soporta JS/TS, Python, Go, C#, Java/Kotlin y Rust.
  *
+ * Resuelve imports relativos y alias de `tsconfig` (`compilerOptions.paths`) a rutas reales antes de
+ * clasificar feature y capa, así un alias propio (`@claims/*`) o un `../../otra-feature/...` no escapa.
+ *
  * Uso:
  *   node check-architecture-boundaries.mjs --config ./boundaries.config.json [--root .]
  */
@@ -11,10 +14,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 function parseArgs(argv) {
-  const args = { config: 'boundaries.config.json', root: process.cwd() };
+  const args = { config: 'boundaries.config.json', configExplicit: false, root: process.cwd() };
   for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === '--config' && argv[i + 1]) args.config = argv[++i];
-    else if (argv[i] === '--root' && argv[i + 1]) args.root = argv[++i];
+    if (argv[i] === '--config' && argv[i + 1]) {
+      args.config = argv[++i];
+      args.configExplicit = true;
+    } else if (argv[i] === '--root' && argv[i + 1]) args.root = argv[++i];
     else if (argv[i] === '--help' || argv[i] === '-h') {
       console.log('Uso: node check-architecture-boundaries.mjs --config <archivo.json> [--root <directorio>]');
       process.exit(0);
@@ -36,31 +41,44 @@ const DEFAULT_CONFIG = {
     '/build/',
     '/bin/',
     '/obj/',
-    '/target/'
+    '/target/',
+    '/\\.angular/',
+    '/coverage/'
   ],
+  tsconfigFiles: ['tsconfig.json'],
   featuresSegment: '/features/',
   coreSegments: ['/core/', '/common/'],
   compositionSegments: ['/composition/'],
   layers: ['domain', 'application', 'infrastructure', 'ui', 'api'],
   allowedUiInfrastructureRegex: '(?:^|/|\\.)composition(?:/|\\.)[^/]+tokens',
+  // Vacío = cero imports entre features. Un backend con contratos compartidos por su feature dueña
+  // (`<feature>/shared/ports`) puede habilitar '(?:^|/)shared(?:/|$)'.
+  allowedCrossFeatureTargetRegex: '',
   featureImportPrefixes: ['@features/', '@app/features/', 'features/', 'features.'],
   compositionImportPrefixes: ['@app/composition/', 'composition/', 'composition.'],
   forbidDeepRelativeImports: true,
   forbidLateImportsInJsTs: true
 };
 
+const JS_TS_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+
 function toPosix(p) {
   return p.split(path.sep).join('/');
 }
 
-function walkFiles(dir, extensions, ignoreRegexes, acc = []) {
+// Ruta relativa a la raíz con "/" inicial: las reglas no dependen de dónde esté clonado el repositorio.
+function repoPath(rootDir, absolute) {
+  return '/' + toPosix(path.relative(rootDir, absolute));
+}
+
+function walkFiles(dir, rootDir, extensions, ignoreRegexes, acc = []) {
   if (!fs.existsSync(dir)) return acc;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    const posix = toPosix(full);
+    const posix = repoPath(rootDir, full) + (entry.isDirectory() ? '/' : '');
     if (ignoreRegexes.some((rx) => rx.test(posix))) continue;
     if (entry.isDirectory()) {
-      walkFiles(full, extensions, ignoreRegexes, acc);
+      walkFiles(full, rootDir, extensions, ignoreRegexes, acc);
     } else if (extensions.some((ext) => entry.name.endsWith(ext))) {
       acc.push(full);
     }
@@ -142,24 +160,110 @@ function extractImports(rawContent, ext) {
   return { cleaned, imports: results };
 }
 
+// tsconfig admite comentarios y comas finales (JSONC); se limpian respetando el contenido de las cadenas.
+function parseJsonc(text) {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j;
+    } else if (ch === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += '\n';
+    } else if (ch === '/' && text[i + 1] === '*') {
+      i = text.indexOf('*/', i + 2);
+      if (i === -1) break;
+      i++;
+    } else {
+      out += ch;
+    }
+  }
+  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+}
+
+function loadPathAliases(rootDir, tsconfigFiles) {
+  const aliases = [];
+  for (const file of tsconfigFiles || []) {
+    const tsconfigPath = path.resolve(rootDir, file);
+    if (!fs.existsSync(tsconfigPath)) continue;
+    const options = parseJsonc(fs.readFileSync(tsconfigPath, 'utf8')).compilerOptions || {};
+    const baseDir = path.resolve(path.dirname(tsconfigPath), options.baseUrl || '.');
+    for (const [pattern, targets] of Object.entries(options.paths || {})) {
+      if (!Array.isArray(targets) || targets.length === 0) continue;
+      const wildcard = pattern.endsWith('*');
+      aliases.push({
+        prefix: wildcard ? pattern.slice(0, -1) : pattern,
+        wildcard,
+        target: path.resolve(baseDir, wildcard ? targets[0].replace(/\*$/, '') : targets[0])
+      });
+    }
+  }
+  return aliases.sort((a, b) => b.prefix.length - a.prefix.length);
+}
+
+// Devuelve la ruta de repositorio del destino de un import JS/TS, o null si es un paquete externo.
+function resolveJsTsSpecifier(spec, file, rootDir, aliases) {
+  let absolute = null;
+  if (spec.startsWith('./') || spec.startsWith('../')) {
+    absolute = path.resolve(path.dirname(file), spec);
+  } else {
+    const alias = aliases.find((a) => (a.wildcard ? spec.startsWith(a.prefix) : spec === a.prefix));
+    if (alias) absolute = path.join(alias.target, alias.wildcard ? spec.slice(alias.prefix.length) : '');
+  }
+  if (!absolute) return null;
+  // Un import de carpeta (barrel) apunta a su index: la carpeta cuenta como segmento, no como archivo.
+  const isDirectory = fs.existsSync(absolute) && fs.statSync(absolute).isDirectory();
+  return repoPath(rootDir, isDirectory ? path.join(absolute, 'index') : absolute);
+}
+
+function layerOfSegment(segment, layers) {
+  const lower = segment.toLowerCase();
+  // Acepta carpetas `domain/` y proyectos con punto como `Acme.Domain/`.
+  return layers.find((l) => lower === l || lower.endsWith(`.${l}`)) || null;
+}
+
 function detectFileContext(posixFile, cfg) {
-  const escapedFeatures = cfg.featuresSegment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const featureMatch = posixFile.match(new RegExp(`${escapedFeatures}([^/]+)(?:/([^/]+))?/`));
-  const feature = featureMatch ? featureMatch[1] : null;
-  const candidateLayer = featureMatch && featureMatch[2] ? featureMatch[2].toLowerCase() : null;
-  let layer = candidateLayer && cfg.layers.includes(candidateLayer) ? candidateLayer : null;
+  const lowerFile = posixFile.toLowerCase();
+  const featuresSegment = cfg.featuresSegment.toLowerCase();
+  const featIdx = lowerFile.indexOf(featuresSegment);
+  let feature = null;
+  let layer = null;
+  let remainder = '';
+
+  if (featIdx !== -1) {
+    const parts = posixFile.slice(featIdx + featuresSegment.length).split('/');
+    if (parts.length > 1) {
+      feature = parts[0].toLowerCase();
+      if (parts.length > 2 && cfg.layers.includes(parts[1].toLowerCase())) {
+        layer = parts[1].toLowerCase();
+        remainder = parts.slice(2).join('/');
+      } else {
+        remainder = parts.slice(1).join('/');
+      }
+    }
+  }
 
   if (!layer) {
-    for (const l of cfg.layers) {
-      if (new RegExp(`/${l}/`, 'i').test(posixFile)) {
-        layer = l;
+    const segments = posixFile.split('/').slice(0, -1);
+    for (let i = 0; i < segments.length; i++) {
+      const found = layerOfSegment(segments[i], cfg.layers);
+      if (found) {
+        layer = found;
+        if (!remainder) remainder = posixFile.split('/').slice(i + 1).join('/');
         break;
       }
     }
   }
 
-  const inCore = cfg.coreSegments.some((seg) => posixFile.toLowerCase().includes(seg.toLowerCase()));
-  return { feature, layer, inCore };
+  const inCore = cfg.coreSegments.some((seg) => lowerFile.includes(seg.toLowerCase()));
+  // Raíz de composición = carpeta de composición fuera de toda feature y del kernel compartido;
+  // los `infrastructure/**/composition/*.tokens` de una feature pertenecen a esa feature.
+  const inComposition =
+    !feature && !inCore && (cfg.compositionSegments || []).some((seg) => lowerFile.includes(seg.toLowerCase()));
+  return { feature, layer, remainder, inCore, inComposition };
 }
 
 function normalizeSpecifierToPath(specifier) {
@@ -172,7 +276,7 @@ function parseTargetFromSpecifier(specifier, cfg) {
     if (specifier.startsWith(prefix)) {
       const rest = normalizeSpecifierToPath(specifier.slice(prefix.length));
       const parts = rest.split('/').filter(Boolean);
-      const feature = parts[0] || null;
+      const feature = parts[0] ? parts[0].toLowerCase() : null;
       const maybeLayer = parts[1] ? parts[1].toLowerCase() : null;
       const layer = maybeLayer && cfg.layers.includes(maybeLayer) ? maybeLayer : null;
       const remainder = layer ? parts.slice(2).join('/') : parts.slice(1).join('/');
@@ -185,7 +289,7 @@ function parseTargetFromSpecifier(specifier, cfg) {
   if (featIdx !== -1) {
     const after = norm.slice(featIdx + cfg.featuresSegment.length);
     const parts = after.split('/').filter(Boolean);
-    const feature = parts[0] || null;
+    const feature = parts[0] ? parts[0].toLowerCase() : null;
     const maybeLayer = parts[1] ? parts[1].toLowerCase() : null;
     const layer = maybeLayer && cfg.layers.includes(maybeLayer) ? maybeLayer : null;
     const remainder = layer ? parts.slice(2).join('/') : parts.slice(1).join('/');
@@ -239,21 +343,29 @@ function main() {
   let userCfg = {};
   if (fs.existsSync(configPath)) {
     userCfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } else if (args.configExplicit) {
+    // Un --config mal escrito no debe degradar a la configuración por defecto y reportar verde.
+    console.error(`No existe el archivo de configuración: ${configPath}`);
+    process.exit(2);
   }
   const cfg = { ...DEFAULT_CONFIG, ...userCfg };
   const ignoreRegexes = cfg.ignorePatterns.map((p) => new RegExp(p));
   const allowedUiInfraRx = new RegExp(cfg.allowedUiInfrastructureRegex);
+  const allowedCrossFeatureRx = cfg.allowedCrossFeatureTargetRegex
+    ? new RegExp(cfg.allowedCrossFeatureTargetRegex, 'i')
+    : null;
+  const aliases = loadPathAliases(rootDir, cfg.tsconfigFiles);
 
   const files = [];
   for (const scanRoot of cfg.scanRoots) {
-    walkFiles(path.resolve(rootDir, scanRoot), cfg.extensions, ignoreRegexes, files);
+    walkFiles(path.resolve(rootDir, scanRoot), rootDir, cfg.extensions, ignoreRegexes, files);
   }
 
   const errors = [];
 
   for (const file of files) {
-    const posixFile = toPosix(file);
-    const relFile = toPosix(path.relative(rootDir, file));
+    const posixFile = repoPath(rootDir, file);
+    const relFile = posixFile.slice(1);
     const ext = path.extname(file);
     const raw = fs.readFileSync(file, 'utf8');
     const { cleaned, imports } = extractImports(raw, ext);
@@ -268,7 +380,7 @@ function main() {
 
       if (
         cfg.forbidDeepRelativeImports &&
-        ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext) &&
+        JS_TS_EXTENSIONS.includes(ext) &&
         (spec.startsWith('../') || /^\.\/[^/]+\//.test(spec))
       ) {
         errors.push(
@@ -276,16 +388,17 @@ function main() {
         );
       }
 
-      if (
-        (ctx.inCore || ctx.feature) &&
-        cfg.compositionImportPrefixes.some((p) => spec.startsWith(p))
-      ) {
+      const resolved = JS_TS_EXTENSIONS.includes(ext) ? resolveJsTsSpecifier(spec, file, rootDir, aliases) : null;
+      const target = resolved ? detectFileContext(resolved, cfg) : parseTargetFromSpecifier(spec, cfg);
+      const importsCompositionRoot = resolved
+        ? target.inComposition
+        : cfg.compositionImportPrefixes.some((p) => spec.startsWith(p));
+
+      if ((ctx.inCore || ctx.feature) && !ctx.inComposition && importsCompositionRoot) {
         errors.push(
           `[composition-leak] ${relFile}:${imp.line} — La raíz de composición ("${spec}") no puede importarse desde core/common ni desde features.`
         );
       }
-
-      const target = parseTargetFromSpecifier(spec, cfg);
 
       if (ctx.inCore && target.feature) {
         errors.push(
@@ -293,7 +406,12 @@ function main() {
         );
       }
 
-      if (ctx.feature && target.feature && ctx.feature !== target.feature) {
+      if (
+        ctx.feature &&
+        target.feature &&
+        ctx.feature !== target.feature &&
+        !(allowedCrossFeatureRx && allowedCrossFeatureRx.test(target.remainder))
+      ) {
         errors.push(
           `[cross-feature] ${relFile}:${imp.line} — La feature "${ctx.feature}" no puede importar otra feature "${target.feature}" ("${spec}").`
         );

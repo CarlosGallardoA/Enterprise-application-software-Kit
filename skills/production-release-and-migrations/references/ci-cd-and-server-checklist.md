@@ -6,6 +6,14 @@ Cumplir [technology-security-policy.md](../../security-and-auditability/referenc
 
 Conservar el informe fechado en `docs/auditorias/seguridad-tecnologias.md`, con inventario real, avisos oficiales y hashes/digests. Revalidar tras actualizar componentes y antes de publicar; inspeccionar después los procesos realmente activos. `npm audit` y `composer audit` cubren sus paquetes, no sustituyen la revisión del runtime ni de sus bibliotecas integradas.
 
+### Herramientas de CI fijadas e inmutables
+- Fijar cada acción/tarea de CI por **SHA completo** cuando la plataforma lo admite (`uses: owner/action@<sha40> # vX.Y.Z`); donde solo se acepta versión, usar la más específica permitida, nunca etiquetas móviles (`@main`, `@latest`) ni solo la mayor si existe una forma más exacta. Fijar también SDK y runtime por versión exacta (`version: '10.0.403'`, no `10.x`) e imágenes por digest.
+- Revisar las actualizaciones de esas identidades como cualquier otra dependencia (changelog, avisos, nuevo SHA verificado) y repetir la compuerta tras cambiarlas.
+
+### Escaneo del artefacto final y del sistema operativo
+- Además de los manifiestos de paquetes, escanear el **artefacto exacto que se publica** (salida de `publish`, bundle web, imagen) generando su inventario (SBOM `CycloneDX`/`SPDX` o equivalente) y contrastándolo con avisos vigentes: detecta bibliotecas nativas y runtimes empaquetados que `npm audit` o la auditoría de NuGet no ven.
+- Escanear el SO o la imagen base de los agentes de build y de los servidores destino (parches del SO, servidor web, runtime de hosting); un servidor no inspeccionado se reporta como `BLOQUEADO`, nunca como parcheado.
+
 ## 1. Los 3 Artefactos Inmutables del Build
 
 Un pipeline limpio nunca despliega desde carpetas sucias de compilación intermedia (`bin/` o árbol fuente crudo); publica tres paquetes verificados con destinos separados:

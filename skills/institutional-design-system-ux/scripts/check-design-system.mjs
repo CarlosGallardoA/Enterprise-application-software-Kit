@@ -2,22 +2,64 @@
 // Validador estático del Sistema de Diseño e Internacionalización (Node.js soportado y parcheado, cero dependencias).
 // Verifica:
 //   1. [no-hex-color]         Cero colores hex literales fuera del archivo de tokens.
-//   2. [no-primitive-token]   Cero consumo directo de primitivos (--brand-*) fuera del archivo de tokens.
+//   2. [no-primitive-token]   Cero consumo directo de primitivos (por defecto --brand-*) fuera del archivo de tokens.
 //   3. [no-transition-all]    Prohibido `transition: all`.
-//   4. [focus-visible-parity] Prohibido `outline: none` / `outline: 0` sin indicador `:focus-visible` o `:focus-within`.
-//   5. [no-hardcoded-ui-text] Detecta textos literales sin traducir en plantillas HTML (opcional con --skip-i18n).
-//   6. [unused-allow-marker]  Falla si un comentario `design-system-allow` ya no suprime ninguna regla real.
+//   4. [focus-visible-parity] Cada `outline: none` / `outline: 0` se evalúa por regla y selector: debe declararse en una
+//                             regla de foco con indicador visible, o tener una regla compañera `<selector>:focus-visible`
+//                             (o un contenedor `:focus-within`) con indicador en la misma hoja.
+//   5. [focus-ring-token]     En reglas de foco, el anillo sale de --focus-ring*: ni sombras `0 0 0 Npx` literales ni
+//                             `outline` visible sin justificar (los controles nativos checkbox/radio se documentan con marcador).
+//   6. [focus-forced-colors]  (opcional, --require-forced-colors-focus) Una regla de foco que elimina el outline y dibuja el
+//                             foco solo con box-shadow desaparece en Alto Contraste: usar `outline: 2px solid transparent`
+//                             junto al anillo o declarar un bloque `@media (forced-colors: active)` en la misma hoja.
+//   7. [no-hardcoded-ui-text] Detecta textos literales sin traducir en plantillas HTML (nodos de texto, interpolaciones
+//                             con literal y atributos aria-label/title/placeholder/alt). Desactivable con --skip-i18n.
+//   8. [unused-allow-marker]  Falla si un comentario `design-system-allow` ya no suprime ninguna regla real.
 //
 // Excepciones auditables junto al código:
 //   CSS/JS: /* design-system-allow: <check> — razón técnica */
 //   HTML:   <!-- design-system-allow: <check> — razón técnica -->
 //   Archivo completo: design-system-allow-file: <check> — razón técnica
+//   El marcador cubre su línea y la siguiente (en HTML, desde la línea anterior a la etiqueta).
+//
+// Alias de marcadores: un proyecto con su propio checker puede conservar sus nombres (hex-literal, primitive-leak,
+// transition-all, focus-visible, focus-ring, hardcoded-string, hardcoded-text). Los alias suprimen el hallazgo
+// equivalente, pero no se reportan como obsoletos: su vigencia la juzga el checker del proyecto, cuya granularidad
+// puede diferir. Los marcadores de checks que este script no implementa (p. ej. font-scale) se ignoran.
+// Alias adicionales: --marker-alias nombre-proyecto=check-del-script[,otro=check].
 //
 // Uso:
-//   node check-design-system.mjs --root . --styles src/styles --app src/app --tokens src/styles/tokens.css
+//   node check-design-system.mjs --root . --styles src/styles --app src/app --tokens src/styles/tokens.css \
+//     [--primitive-prefix --brand-,--acme-] [--marker-alias foo=no-hex-color] [--allow-literals SICRE,N/A] \
+//     [--require-forced-colors-focus] [--skip-i18n]
 
 import fs from 'node:fs';
 import path from 'node:path';
+
+const KNOWN_CHECKS = new Set([
+  'no-hex-color',
+  'no-primitive-token',
+  'no-transition-all',
+  'focus-visible-parity',
+  'focus-ring-token',
+  'focus-forced-colors',
+  'no-hardcoded-ui-text'
+]);
+
+const DEFAULT_MARKER_ALIASES = {
+  'hex-literal': 'no-hex-color',
+  'primitive-leak': 'no-primitive-token',
+  'transition-all': 'no-transition-all',
+  'focus-visible': 'focus-visible-parity',
+  'focus-ring': 'focus-ring-token',
+  'hardcoded-string': 'no-hardcoded-ui-text',
+  'hardcoded-text': 'no-hardcoded-ui-text'
+};
+
+const USAGE =
+  'Uso: node check-design-system.mjs [--root .] [--styles src/styles] [--app src/app] [--tokens src/styles/tokens.css]\n' +
+  '       [--primitive-prefix --brand-[,--otro-]] [--marker-alias alias=check[,alias=check]]\n' +
+  '       [--allow-literals A,B] [--require-forced-colors-focus] [--skip-i18n]';
 
 function parseArgs(argv) {
   const args = {
@@ -25,30 +67,52 @@ function parseArgs(argv) {
     styles: 'src/styles',
     app: 'src/app',
     tokens: 'src/styles/tokens.css',
-    primitivePrefix: '--brand-',
+    primitivePrefixes: ['--brand-'],
+    markerAliases: { ...DEFAULT_MARKER_ALIASES },
+    requireForcedColorsFocus: false,
     skipI18n: false,
     allowedLiterals: ['ID', 'Esc', 'OK', 'PDF', 'CSV', 'JSON', 'UTC']
   };
+  const list = (value) =>
+    value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === '--root' && argv[i + 1]) args.root = argv[++i];
-    else if (argv[i] === '--styles' && argv[i + 1]) args.styles = argv[++i];
-    else if (argv[i] === '--app' && argv[i + 1]) args.app = argv[++i];
-    else if (argv[i] === '--tokens' && argv[i + 1]) args.tokens = argv[++i];
-    else if (argv[i] === '--primitive-prefix' && argv[i + 1]) args.primitivePrefix = argv[++i];
-    else if (argv[i] === '--skip-i18n') args.skipI18n = true;
-    else if (argv[i] === '--allow-literals' && argv[i + 1]) {
-      args.allowedLiterals.push(...argv[++i].split(',').map((s) => s.trim()));
-    } else if (argv[i] === '--help' || argv[i] === '-h') {
-      console.log(
-        'Uso: node check-design-system.mjs [--root .] [--styles src/styles] [--app src/app] [--tokens src/styles/tokens.css] [--primitive-prefix --brand-] [--skip-i18n]'
-      );
+    const flag = argv[i];
+    const hasValue = argv[i + 1] !== undefined;
+    if (flag === '--root' && hasValue) args.root = argv[++i];
+    else if (flag === '--styles' && hasValue) args.styles = argv[++i];
+    else if (flag === '--app' && hasValue) args.app = argv[++i];
+    else if (flag === '--tokens' && hasValue) args.tokens = argv[++i];
+    else if (flag === '--primitive-prefix' && hasValue) args.primitivePrefixes = list(argv[++i]);
+    else if (flag === '--marker-alias' && hasValue) {
+      for (const pair of list(argv[++i])) {
+        const [alias, check] = pair.split('=').map((s) => s.trim());
+        if (!alias || !KNOWN_CHECKS.has(check)) {
+          console.error(`✗ --marker-alias inválido "${pair}": usa alias=check con un check de [${[...KNOWN_CHECKS].join(', ')}].`);
+          process.exit(2);
+        }
+        args.markerAliases[alias] = check;
+      }
+    } else if (flag === '--require-forced-colors-focus') args.requireForcedColorsFocus = true;
+    else if (flag === '--skip-i18n') args.skipI18n = true;
+    else if (flag === '--allow-literals' && hasValue) args.allowedLiterals.push(...list(argv[++i]));
+    else if (flag === '--help' || flag === '-h') {
+      console.log(USAGE);
       process.exit(0);
     }
+  }
+  if (args.primitivePrefixes.length === 0) {
+    console.error('✗ --primitive-prefix requiere al menos un prefijo (ej. --brand-).');
+    process.exit(2);
   }
   return args;
 }
 
 const MARKER_RX = /design-system-allow(-file)?:\s*([\w-]+)\s*(?:—|--|:)\s*\S+/g;
+const FOCUS_PSEUDO_RX = /:focus(?:-visible|-within)?\b/;
+const LETTERS_RX = /[A-Za-zÀ-ÿ]{2,}/;
 
 function toPosix(p) {
   return p.split(path.sep).join('/');
@@ -65,12 +129,20 @@ function walk(dir, pred, acc = []) {
   return acc;
 }
 
+function blank(text) {
+  return text.replace(/[^\n]/g, ' ');
+}
+
 function stripBlockCommentsPreserveLines(text) {
-  return text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  return text.replace(/\/\*[\s\S]*?\*\//g, blank);
 }
 
 function stripCodeCommentsPreserveLines(text) {
   return stripBlockCommentsPreserveLines(text).replace(/^[ \t]*\/\/.*$/gm, (m) => ' '.repeat(m.length));
+}
+
+function stripHtmlCommentsPreserveLines(text) {
+  return text.replace(/<!--[\s\S]*?-->/g, blank);
 }
 
 function lineAt(text, index) {
@@ -81,6 +153,119 @@ function lineAt(text, index) {
   return l;
 }
 
+// Separa una lista de selectores por comas de primer nivel (respeta :is(a, b) y [attr="a,b"]).
+function splitSelectors(selector) {
+  const parts = [];
+  let depth = 0;
+  let quote = null;
+  let current = '';
+  for (const ch of selector) {
+    if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+// Devuelve las reglas hoja { selector, body, bodyStart, atRules } con el contexto de @media/@supports que las envuelve.
+// Espera el CSS ya sin comentarios.
+function parseCssRules(css) {
+  const rules = [];
+  const stack = [];
+  let segStart = 0;
+  let quote = null;
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i];
+    if (quote) {
+      if (ch === quote && css[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '{') {
+      if (stack.length > 0) stack[stack.length - 1].hasChild = true;
+      stack.push({ header: css.slice(segStart, i).trim(), bodyStart: i + 1, hasChild: false });
+      segStart = i + 1;
+    } else if (ch === '}') {
+      const top = stack.pop();
+      if (top && !top.hasChild && !top.header.startsWith('@')) {
+        rules.push({
+          selector: top.header,
+          body: css.slice(top.bodyStart, i),
+          bodyStart: top.bodyStart,
+          atRules: stack.filter((s) => s.header.startsWith('@')).map((s) => s.header)
+        });
+      }
+      segStart = i + 1;
+    } else if (ch === ';') segStart = i + 1;
+  }
+  return rules;
+}
+
+function declarations(body) {
+  return body
+    .split(';')
+    .map((d) => {
+      const sep = d.indexOf(':');
+      if (sep < 0) return null;
+      return { property: d.slice(0, sep).trim().toLowerCase(), value: d.slice(sep + 1).trim() };
+    })
+    .filter(Boolean);
+}
+
+function isNoneValue(value) {
+  return /^(?:none|0|0px|initial|unset|inherit)(?:\s*!important)?$/i.test(value);
+}
+
+function isOutlineProperty(property) {
+  return property === 'outline' || property === 'outline-color' || property === 'outline-style' || property === 'outline-width';
+}
+
+// Indicador visible: sombra, borde, fondo, trazo, filtro, subrayado o un outline que no sea none/transparente.
+function hasVisibleIndicator(body, { ignoreOutline = false } = {}) {
+  return declarations(body).some(({ property, value }) => {
+    if (!value || isNoneValue(value) || /^transparent$/i.test(value)) return false;
+    if (isOutlineProperty(property)) return !ignoreOutline && !/\btransparent\b/i.test(value);
+    return /^(?:box-shadow|border(?:-[a-z]+)*|background(?:-color)?|stroke|filter|text-decoration(?:-line)?)$/.test(property);
+  });
+}
+
+function onlyShadowIndicator(body) {
+  return (
+    declarations(body).some(({ property, value }) => property === 'box-shadow' && !isNoneValue(value)) &&
+    !hasVisibleIndicator(
+      body
+        .split(';')
+        .filter((d) => !/^\s*box-shadow\s*:/i.test(d))
+        .join(';'),
+      { ignoreOutline: true }
+    )
+  );
+}
+
+function withoutFocusPseudo(selector) {
+  return selector
+    .replace(/:(?:focus-visible|focus-within|focus)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isProgrammaticFocus(selector) {
+  return /\[tabindex=(["']?)-1\1\]/.test(selector);
+}
+
+function insideForcedColors(rule) {
+  return rule.atRules.some((a) => /forced-colors\s*:\s*active/i.test(a));
+}
+
 function main() {
   const args = parseArgs(process.argv);
   const rootDir = path.resolve(args.root);
@@ -88,11 +273,15 @@ function main() {
   const appRoot = path.resolve(rootDir, args.app);
   const tokensFile = path.resolve(rootDir, args.tokens);
   const allowedSet = new Set(args.allowedLiterals);
+  // Un literal permitido sigue permitido con puntuación o separadores alrededor ("· ID:", "(PDF)").
+  const isAllowedLiteral = (text) =>
+    allowedSet.has(text) || allowedSet.has(text.replace(/^[\s·•|:()\[\]–—-]+|[\s·•|:()\[\]–—-]+$/g, ''));
 
   const lineMarkers = new Map();
   const fileMarkers = new Map();
   const rawCache = new Map();
   const errors = [];
+  let ignoredForeignMarkers = 0;
 
   function relPath(file) {
     return toPosix(path.relative(rootDir, file));
@@ -101,12 +290,17 @@ function main() {
   function loadFile(file) {
     if (rawCache.has(file)) return rawCache.get(file);
     const raw = fs.readFileSync(file, 'utf8');
-    const lines = raw.split('\n');
-    lines.forEach((txt, idx) => {
+    raw.split('\n').forEach((txt, idx) => {
       for (const m of txt.matchAll(MARKER_RX)) {
-        const entry = { rel: relPath(file), line: idx + 1, check: m[2], used: false };
-        if (m[1]) fileMarkers.set(`${file}:${m[2]}`, entry);
-        else lineMarkers.set(`${file}:${idx + 1}:${m[2]}`, entry);
+        const name = m[2];
+        const check = KNOWN_CHECKS.has(name) ? name : args.markerAliases[name];
+        if (!check) {
+          ignoredForeignMarkers++;
+          continue;
+        }
+        const entry = { rel: relPath(file), line: idx + 1, check, name, aliased: name !== check, used: false };
+        if (m[1]) fileMarkers.set(`${file}:${check}`, entry);
+        else lineMarkers.set(`${file}:${idx + 1}:${check}`, entry);
       }
     });
     rawCache.set(file, raw);
@@ -152,18 +346,39 @@ function main() {
   }
 
   const hexRx = /#[0-9a-fA-F]{3,8}\b/g;
-  const escapedPrefix = args.primitivePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const primRx = new RegExp(`var\\(\\s*(${escapedPrefix}[\\w-]+)`, 'g');
+  const prefixAlternation = args.primitivePrefixes.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const primRx = new RegExp(`var\\(\\s*((?:${prefixAlternation})[\\w-]+)`, 'g');
 
-  // 1 & 2 & 3 & 4 en CSS
+  // Bloques @media (forced-colors: active) con outline: en la propia hoja o, con !important, en cualquier hoja.
+  const parsedCss = new Map();
+  let globalForcedColorsOutline = false;
   for (const file of cssFiles) {
-    const raw = loadFile(file);
-    const cleaned = stripBlockCommentsPreserveLines(raw);
+    const cleaned = stripBlockCommentsPreserveLines(loadFile(file));
+    const rules = parseCssRules(cleaned);
+    const forcedOutline = rules.some(
+      (r) => insideForcedColors(r) && declarations(r.body).some((d) => isOutlineProperty(d.property) && !isNoneValue(d.value))
+    );
+    if (
+      rules.some(
+        (r) =>
+          insideForcedColors(r) &&
+          FOCUS_PSEUDO_RX.test(r.selector) &&
+          declarations(r.body).some((d) => d.property === 'outline' && /!important/i.test(d.value))
+      )
+    ) {
+      globalForcedColorsOutline = true;
+    }
+    parsedCss.set(file, { cleaned, rules, forcedOutline });
+  }
+
+  // 1, 2, 3, 4, 5 y 6 en CSS
+  for (const file of cssFiles) {
+    const { cleaned, rules, forcedOutline } = parsedCss.get(file);
     const isTokens = path.resolve(file) === tokensFile;
 
     if (!isTokens) {
       for (const m of cleaned.matchAll(hexRx)) {
-        // Ignorar selectores de ID en CSS verificando contexto previo inmediato (ej. : , ; ( espacio tras :)
+        // Ignorar selectores de ID verificando que el hex esté en posición de valor (tras ":").
         const before = cleaned.slice(Math.max(0, m.index - 30), m.index);
         if (/[:,\s(]$/.test(before) && /:\s*[^;{]*$/.test(before)) {
           report(file, 'no-hex-color', lineAt(cleaned, m.index), `Color hex literal "${m[0]}" fuera de tokens. Usa un token semántico --color-*.`);
@@ -188,16 +403,93 @@ function main() {
       );
     }
 
-    const outlineRx = /outline\s*:\s*(?:none|0)\b/g;
-    const hasFocusReplacement = /:focus-visible\b|:focus-within\b|--focus-ring/.test(cleaned);
-    for (const m of cleaned.matchAll(outlineRx)) {
-      if (!hasFocusReplacement) {
-        report(
-          file,
-          'focus-visible-parity',
-          lineAt(cleaned, m.index),
-          '"outline: none" sin regla :focus-visible/:focus-within ni --focus-ring equivalente en la hoja.'
-        );
+    // Compañeras de foco con indicador visible en esta hoja, normalizadas sin la pseudo-clase.
+    const focusCompanions = rules
+      .filter((r) => FOCUS_PSEUDO_RX.test(r.selector) && hasVisibleIndicator(r.body))
+      .flatMap((r) =>
+        splitSelectors(r.selector)
+          .filter((sub) => FOCUS_PSEUDO_RX.test(sub))
+          .map((sub) => ({ normalized: withoutFocusPseudo(sub), within: /:focus-within\b/.test(sub) }))
+      );
+
+    const hasCompanionFor = (base) =>
+      focusCompanions.some(
+        (c) => c.normalized === base || (c.normalized.startsWith(base) && /^[:[]/.test(c.normalized.slice(base.length)))
+      );
+    const insideFocusWithin = (base) => focusCompanions.some((c) => c.within && base.startsWith(`${c.normalized} `));
+    // Un campo dentro de un control compuesto (barra de búsqueda, combobox) puede delegar el indicador en el
+    // contenedor :focus-within. El CSS no expresa la relación DOM, así que solo se acepta en reglas de foco
+    // cuando la misma hoja declara un contenedor :focus-within con indicador del mismo bloque de nombre
+    // (primer segmento de la clase: .tree-search-input ↔ .tree-search, .command-input ↔ .command-search-bar).
+    const blockOf = (selector) => (/\.([a-zA-Z][a-zA-Z0-9]*)/.exec(selector) ?? [])[1];
+    const withinBlocks = new Set(focusCompanions.filter((c) => c.within).map((c) => blockOf(c.normalized)).filter(Boolean));
+    const delegatesToSameBlock = (base) => withinBlocks.has(blockOf(base.split(' ').pop()));
+
+    for (const rule of rules) {
+      const subs = splitSelectors(rule.selector);
+      const isFocusRule = subs.length > 0 && subs.every((sub) => FOCUS_PSEUDO_RX.test(sub));
+      const forcedContext = insideForcedColors(rule);
+
+      // 4. outline: none evaluado por regla y por selector.
+      for (const decl of rule.body.matchAll(/\boutline(?:-style|-width)?\s*:\s*(?:none|0(?:px)?)\s*(?:!important\s*)?(?=;|$)/g)) {
+        const line = lineAt(cleaned, rule.bodyStart + decl.index);
+        const restOfBody = rule.body.slice(0, decl.index) + rule.body.slice(decl.index + decl[0].length);
+        const unsatisfied = subs.filter((sub) => {
+          if (isProgrammaticFocus(sub)) return false;
+          const base = withoutFocusPseudo(sub);
+          if (FOCUS_PSEUDO_RX.test(sub)) return !hasVisibleIndicator(restOfBody) && !insideFocusWithin(base) && !delegatesToSameBlock(base);
+          return !hasCompanionFor(base) && !insideFocusWithin(base);
+        });
+        if (unsatisfied.length > 0) {
+          report(
+            file,
+            'focus-visible-parity',
+            line,
+            `"outline: none" en "${unsatisfied.join(', ')}" sin indicador de foco equivalente en la propia regla ni regla compañera :focus-visible/:focus-within con indicador visible.`
+          );
+        }
+
+        // 6. Alto Contraste: foco solo por box-shadow tras eliminar el outline.
+        if (
+          args.requireForcedColorsFocus &&
+          isFocusRule &&
+          !forcedContext &&
+          onlyShadowIndicator(restOfBody) &&
+          !forcedOutline &&
+          !globalForcedColorsOutline
+        ) {
+          report(
+            file,
+            'focus-forced-colors',
+            line,
+            `"${rule.selector}" elimina el outline y dibuja el foco solo con box-shadow, que desaparece en Alto Contraste; usa "outline: 2px solid transparent" junto al anillo o un bloque @media (forced-colors: active).`
+          );
+        }
+      }
+
+      // 5. Anillo de foco desde tokens en reglas de foco (fuera de bloques forced-colors).
+      if (isFocusRule && !forcedContext) {
+        for (const decl of rule.body.matchAll(/\b(outline(?:-color)?)\s*:\s*([^;]+)/g)) {
+          const value = decl[2].trim();
+          if (isNoneValue(value) || /\btransparent\b/i.test(value) || /^(?:auto|currentcolor)$/i.test(value)) continue;
+          report(
+            file,
+            'focus-ring-token',
+            lineAt(cleaned, rule.bodyStart + decl.index),
+            `Outline visible "${decl[1]}: ${value}" en "${rule.selector}"; usa --focus-ring* con "outline: 2px solid transparent", o justifica el outline nativo (checkbox/radio) con marcador.`
+          );
+        }
+        for (const decl of rule.body.matchAll(/\bbox-shadow\s*:\s*([^;]+)/g)) {
+          const value = decl[1].trim();
+          if (/\b0\s+0\s+0\s+(?:\d|calc\()/.test(value) && !value.includes('var(--focus-ring')) {
+            report(
+              file,
+              'focus-ring-token',
+              lineAt(cleaned, rule.bodyStart + decl.index),
+              `Anillo de foco literal en "${rule.selector}"; usa --focus-ring, --focus-ring-danger, --focus-ring-inset o --focus-ring-field.`
+            );
+          }
+        }
       }
     }
   }
@@ -205,9 +497,7 @@ function main() {
   // Hex y primitivos en HTML y TS/JS de producción
   for (const file of [...htmlFiles, ...prodCodeFiles]) {
     const raw = loadFile(file);
-    const cleaned = file.endsWith('.html')
-      ? raw.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '))
-      : stripCodeCommentsPreserveLines(raw);
+    const cleaned = file.endsWith('.html') ? stripHtmlCommentsPreserveLines(raw) : stripCodeCommentsPreserveLines(raw);
 
     for (const m of cleaned.matchAll(primRx)) {
       report(file, 'no-primitive-token', lineAt(cleaned, m.index), `Token primitivo "${m[1]}" usado en componente.`);
@@ -219,49 +509,80 @@ function main() {
     }
   }
 
-  // 5. Texto literal sin traducir en plantillas HTML
+  // 7. Texto literal sin traducir en plantillas HTML
   if (!args.skipI18n) {
     for (const file of htmlFiles) {
-      const raw = loadFile(file);
-      const cleaned = raw
-        .replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '))
-        .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, (m) => m.replace(/[^\n]/g, ' '));
+      const cleaned = stripHtmlCommentsPreserveLines(loadFile(file)).replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, blank);
 
       // Interpolaciones con string literal: {{ 'Texto' }} (sin pipe de traducción)
-      const interpRx = /\{\{\s*['"]([^'"]*[A-Za-zÁÉÍÓÚáéíóúÑñ]{2,}[^'"]*)['"]\s*\}\}/g;
+      const interpRx = /\{\{\s*(['"])([^'"]*[A-Za-zÀ-ÿ]{2,}[^'"]*)\1\s*\}\}/g;
       for (const m of cleaned.matchAll(interpRx)) {
-        if (!allowedSet.has(m[1].trim())) {
+        if (!isAllowedLiteral(m[2].trim())) {
           report(
             file,
             'no-hardcoded-ui-text',
             lineAt(cleaned, m.index),
-            `Interpolación con texto literal "${m[1].trim()}"; usa clave de internacionalización.`
+            `Interpolación con texto literal "${m[2].trim()}"; usa clave de internacionalización.`
           );
         }
       }
 
-      // Nodos de texto literal entre etiquetas >Texto< (excluyendo expresiones {{ ... }} y bloques @if/@for)
-      const textNodeRx = />([^<>{}@]+)</g;
-      for (const m of cleaned.matchAll(textNodeRx)) {
-        const text = m[1].replace(/&\w+;|&#\d+;/g, ' ').trim();
-        if (!text) continue;
-        if (!/[A-Za-zÁÉÍÓÚáéíóúÑñ]{2,}/.test(text)) continue;
-        if (allowedSet.has(text)) continue;
-        const startLine = lineAt(cleaned, m.index);
-        const textLine = lineAt(cleaned, m.index + m[0].indexOf(m[1]));
+      // Atributos de texto visible o accesible con literal (los enlazados [title]="..." no coinciden).
+      for (const m of cleaned.matchAll(/\s(aria-label|title|placeholder|alt)\s*=\s*(["'])([^"']*)\2/g)) {
+        const value = m[3].trim();
+        if (!value || value.includes('{{') || !LETTERS_RX.test(value) || isAllowedLiteral(value)) continue;
         report(
           file,
           'no-hardcoded-ui-text',
-          textLine,
-          `Texto visible sin traducir "${text.slice(0, 60)}"; usa el sistema de i18n.`,
-          startLine
+          lineAt(cleaned, m.index + 1),
+          `Atributo "${m[1]}" con texto literal "${value.slice(0, 60)}"; usa el sistema de i18n.`,
+          lineAt(cleaned, cleaned.lastIndexOf('<', m.index))
         );
       }
+
+      // Nodos de texto: se blanquean interpolaciones, cabeceras de control de flujo (@if/@for/... con sus
+      // condiciones, que pueden contener ">"), @let, etiquetas completas (con ">" dentro de atributos
+      // entrecomillados), entidades y llaves. Lo que quede con letras es texto visible literal.
+      const tagEnds = [];
+      const work = cleaned
+        .replace(/\{\{[\s\S]*?\}\}/g, blank)
+        .replace(/@(?:if|else\s+if|else|for|empty|switch|case|default|defer|placeholder|loading|error)\b[^{]*\{/g, blank)
+        .replace(/@let\s+[^;]*;/g, blank)
+        .replace(/<\/?[a-zA-Z][^>"']*(?:(?:"[^"]*"|'[^']*')[^>"']*)*>/g, (m, offset) => {
+          tagEnds.push(offset + m.length);
+          return blank(m);
+        })
+        .replace(/&[a-zA-Z#0-9]+;/g, blank)
+        .replace(/[{}]/g, ' ');
+
+      let offset = 0;
+      let tagCursor = 0;
+      work.split('\n').forEach((text, idx) => {
+        const lineStart = offset;
+        offset += text.length + 1;
+        const trimmed = text.trim();
+        if (!trimmed || !LETTERS_RX.test(trimmed) || isAllowedLiteral(trimmed)) return;
+        const textIndex = lineStart + text.indexOf(trimmed);
+        while (tagCursor + 1 < tagEnds.length && tagEnds[tagCursor + 1] <= textIndex) tagCursor++;
+        const prevTagEnd = tagEnds[tagCursor] !== undefined && tagEnds[tagCursor] <= textIndex ? tagEnds[tagCursor] : textIndex;
+        report(
+          file,
+          'no-hardcoded-ui-text',
+          idx + 1,
+          `Texto visible sin traducir "${trimmed.slice(0, 60)}"; usa el sistema de i18n.`,
+          lineAt(cleaned, Math.max(0, prevTagEnd - 1))
+        );
+      });
     }
   }
 
-  // 6. Marcadores obsoletos que ya no suprimen nada
+  // 8. Marcadores obsoletos que ya no suprimen nada (los alias de proyecto los valida su propio checker).
+  let aliasedMarkers = 0;
   for (const entry of [...lineMarkers.values(), ...fileMarkers.values()]) {
+    if (entry.aliased) {
+      aliasedMarkers++;
+      continue;
+    }
     if (!entry.used) {
       errors.push(
         `[unused-allow-marker] ${entry.rel}:${entry.line} — El marcador design-system-allow para "${entry.check}" no suprimió ninguna violación; elimínalo.`
@@ -269,14 +590,20 @@ function main() {
     }
   }
 
+  const markerNote =
+    aliasedMarkers + ignoredForeignMarkers > 0
+      ? ` Marcadores con alias: ${aliasedMarkers}; de checks ajenos ignorados: ${ignoredForeignMarkers}.`
+      : '';
+
   if (errors.length > 0) {
     console.error(`Se detectaron ${errors.length} violaciones del sistema de diseño:\n`);
     for (const err of errors) console.error(`  ✗ ${err}`);
+    if (markerNote) console.error(`\n${markerNote.trim()}`);
     process.exit(1);
   }
 
   console.log(
-    `✓ Sistema de diseño verificado sin violaciones (${cssFiles.length} CSS, ${htmlFiles.length} HTML, ${prodCodeFiles.length} archivos de código).`
+    `✓ Sistema de diseño verificado sin violaciones (${cssFiles.length} CSS, ${htmlFiles.length} HTML, ${prodCodeFiles.length} archivos de código).${markerNote}`
   );
 }
 

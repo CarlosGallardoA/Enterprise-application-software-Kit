@@ -1,6 +1,6 @@
 # Organización de la documentación
 
-Los documentos nuevos del proyecto se crean dentro de `docs/` y en la subcarpeta que corresponda a su propósito. Esta regla se aplica también cuando la petición solo dice «crear un `.md`» sin indicar ruta. **No crear documentos sueltos en la raíz de `docs/`.**
+Los documentos nuevos del proyecto se crean dentro de `docs/` y en la subcarpeta que corresponda a su propósito. Esta regla se aplica también cuando la petición solo dice «crear un `.md`» sin indicar ruta. **No crear archivos sueltos (documentos, imágenes, diagramas ni exportaciones) en la raíz de `docs/`**; un diagrama vive junto al documento que lo usa.
 
 | Carpeta | Contenido |
 | --- | --- |
@@ -9,7 +9,7 @@ Los documentos nuevos del proyecto se crean dentro de `docs/` y en la subcarpeta
 | `guias/` | Instrucciones de desarrollo y descripción de flujos funcionales. |
 | `operacion/` | Configuración, despliegue, migraciones, logs y procedimientos de soporte (runbooks). |
 | `decisiones/` | Justificación de una decisión técnica concreta. |
-| `auditorias/` | Informes de revisión, seguridad, diseño, hallazgos y matrices de remediación. |
+| `auditorias/` | Informes de revisión, seguridad, diseño, hallazgos y matrices de remediación, incluido el informe vigente `seguridad-tecnologias.md`. Las evidencias locales van en `auditorias/evidencias/`, ignorada por Git. |
 | `planes/` | Planes de trabajo, remediación, rediseño y rendimiento. |
 | `reglas/` | Reglas de proceso/gobierno vinculantes (no de implementación por stack). |
 | `estandares/` | Convenciones de código e implementación por stack (backend, frontend). |

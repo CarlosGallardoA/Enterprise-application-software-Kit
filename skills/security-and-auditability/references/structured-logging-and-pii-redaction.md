@@ -8,7 +8,9 @@ Distinguir siempre dos canales con propósitos distintos:
    - Cada petición HTTP: método, ruta **sin query string**, código de estado, duración en ms, `RequestId`, IP cliente y `UserId` autenticado. Sondeos frecuentes (`/health/*`, `/heartbeat`, colas) se registran en nivel `Debug` para no saturar disco.
    - Excepciones no controladas (`500`): registran el evento `Error` con el mismo `RequestId` que el usuario recibe como `traceId`.
    - Eventos de seguridad en controladores de acceso: inicios/cierres de sesión e intentos fallidos (las trazas operativas de negocio viven en casos de uso o infraestructura, no en controladores).
-   - Procesamiento de Outbox y jobs de fondo: IDs de mensaje, tipo, intento, duración y **únicamente el nombre del tipo de excepción** cuando falla.
+   - Procesamiento de Outbox y jobs de fondo: IDs de mensaje, tipo, intento, duración y resultado. Cuando falla:
+     - En consola/stdout, herramientas CLI, columnas persistidas como `lastError` y todo lo que se devuelve a un cliente, **únicamente el nombre del tipo de excepción** o un código estable.
+     - En el log estructurado del servidor, con acceso restringido, se admite la excepción completa con stack para diagnosticar jobs de fondo, siempre que los mensajes de excepción propios no se construyan con PII, secretos ni payloads y que la redacción del sink se aplique igual a esas propiedades.
    - Rotación diaria + tope de tamaño por archivo (ej. 100 MB), retención acotada (ej. 31 archivos) y apertura en modo compartido (`shared`) para no perder líneas durante reciclados solapados del servidor.
 
 ## 2. Lista negra absoluta (lo que NUNCA entra a un log)

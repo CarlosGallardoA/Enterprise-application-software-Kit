@@ -72,7 +72,7 @@ Consulta las recetas detalladas y tablas de decisión en:
 5. **Entrada (`api` / `ui`)**:
    - En API: parsear contrato de wire, invocar **un solo** caso de uso y traducir el resultado a HTTP (`ApiFailureResponse` en fallas de negocio).
    - En UI: invocar el caso de uso o store de UI mediante su puerto/token, nunca el adaptador HTTP directo.
-6. **Composición por alcance**: enlazar puerto → adaptador y caso de uso en la raíz de composición del alcance exacto (global solo para sesión/transporte transversal; nivel de ruta diferida para features de pantalla). Si una clase concreta implementa dos puertos (ej. `SessionQueryPort` y `SessionCommandsPort`), instanciarla **una sola vez** y redirigir ambos puertos a esa misma instancia.
+6. **Composición por alcance**: enlazar puerto → adaptador y caso de uso en la raíz de composición del alcance exacto (global solo para sesión/transporte transversal y, con justificación, el flujo pre-autenticación mínimo que exige `authGuard`; los casos de uso de pantallas previas al login, como restablecer contraseña, van en la ruta de login; nivel de ruta diferida para features de pantalla). Si una clase concreta implementa dos puertos (ej. `SessionQueryPort` y `SessionCommandsPort`), instanciarla **una sola vez** y redirigir ambos puertos a esa misma instancia.
 7. **Pruebas y validación de fronteras**: agregar las pruebas por capa (`layered-testing-strategy`) y ejecutar el validador automático de fronteras.
 
 ## Verificación automática de fronteras
@@ -82,6 +82,11 @@ Ejecutar el script incluido (sin dependencias externas, Node.js soportado y parc
 ```bash
 node <ruta-skill>/scripts/check-architecture-boundaries.mjs --config ./boundaries.config.json
 ```
+
+- `tsconfigFiles`: lista de `tsconfig` cuyos `compilerOptions.paths` se usan para resolver alias (`@features/*`, `@core/*` o alias propios) y los imports relativos a su ruta real antes de clasificar feature y capa; sin esto, un alias no previsto o un `../../otra-feature/` escapan a la regla `cross-feature`.
+- Los tokens de composición anidados (`infrastructure/<concern>/composition/*.tokens`) son importables desde `ui`; la raíz de composición (`composition/` fuera de features y del kernel) no es importable desde features ni `core`.
+- `allowedCrossFeatureTargetRegex` (vacío por defecto = cero imports entre features): en backend con contratos de la Forma 3, habilitar `(?:^|/)shared(?:/|$)` para aceptar solo `<feature>/shared/**` de la feature dueña.
+- Un `--config` inexistente termina con código 2 en lugar de verificar con valores por defecto.
 
 Checklist manual complementario al revisar el diff:
 - [ ] Cero imports entre features hermanas (`features/a` no importa `features/b`).

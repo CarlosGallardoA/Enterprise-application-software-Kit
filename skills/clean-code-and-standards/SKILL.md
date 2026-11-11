@@ -25,7 +25,9 @@ Antes de ejecutar herramientas o cerrar el cambio, cumplir [la política de segu
 
 ### 1. Cero advertencias y prohibición de supresiones evasivas
 - Configurar compiladores y analizadores estáticos con **tratamiento de advertencias como errores** (`0 warnings, 0 errors`).
+- **Excepción única por disponibilidad de herramientas**: una advertencia que solo indica que la fuente de avisos no fue alcanzable (p. ej. NuGet `NU1900`) puede excluirse del tratamiento como error en la compilación local **solo** si CI ejecuta esa misma comprobación como compuerta bloqueante. Las advertencias que reportan una vulnerabilidad real (NuGet `NU1901`–`NU1904`, `npm audit`) jamás se silencian ni se degradan a no-error. Ver la [política de seguridad de tecnologías](../security-and-auditability/references/technology-security-policy.md), punto 9.
 - Prohibido usar directivas para silenciar advertencias reales de tipos o nulabilidad (`@ts-ignore`, `#pragma warning disable`, `type: ignore`, `#[allow(...)]` sin justificación arquitectónica). Resolver siempre la causa raíz.
+- **Supresión de linter admitida**: una supresión puntual de la línea siguiente (`eslint-disable-next-line <regla> -- <motivo>`) con el motivo en la misma línea solo se acepta cuando la regla es propia del proyecto (regla custom o selector configurado, p. ej. `no-restricted-syntax`) y el motivo es arquitectónico, no de conveniencia (en SICRE: validación síncrona de entrada del usuario cuando el scope de traducciones ya cargó). Nunca para reglas de tipos, nulabilidad o seguridad, ni a nivel de archivo.
 - Prohibido usar operadores de aserción no nula (`!`) o casteos forzados para callar al compilador al desempaquetar resultados de casos de uso o entradas HTTP; usar coincidencia de patrones o guardas explícitas.
 
 ### 2. Higiene quirúrgica de comentarios
@@ -56,10 +58,12 @@ Antes de ejecutar herramientas o cerrar el cambio, cumplir [la política de segu
 
 ### 7. Manejo explícito de errores en procesos de fondo
 - En workers o bucles periódicos, capturar fallos por iteración registrando el error estructurado e informando que se reintentará en el siguiente ciclo, **dejando pasar siempre las señales de cancelación del host**. Jamás escribir bloques `catch` vacíos que traguen fallas en silencio.
+- **Filtrar por el token del host, no por el tipo de excepción**: el apagado se reconoce con `catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)` (o el equivalente del lenguaje: comprobar la señal de parada del host). Un `OperationCanceledException`/`TimeoutException` que no proviene del apagado (timeout de un cliente HTTP, cancelación interna de una consulta) es una falla de la iteración: se registra y se reintenta en el siguiente ciclo, nunca se trata como parada.
 
 ### 8. Integridad inquebrantable de las pruebas y cero tests silenciados
 - **Prohibido alterar, debilitar o saltar un test solo para que pase**: si una prueba falla, la presunción obligatoria es que detectó un **error real en el código de producción**. Acomodar la expectativa del test a la salida defectuosa o marcarlo con `skip` / `xit` / `Disabled` oculta el defecto y lo envía a producción.
-- El auditor de higiene bloquea automáticamente cualquier test saltado sin justificación explícita (`[skipped-test]`). Ver la Ley Cero y el protocolo de triaje en [`layered-testing-strategy`](../layered-testing-strategy/SKILL.md) y [test-integrity-and-triage.md](../layered-testing-strategy/references/test-integrity-and-triage.md).
+- **Salto condicional legítimo frente a manipulación**: es válido un salto atado a un entorno o perfil de ejecución explícito, con la condición y el motivo en la misma llamada (`test.skip(process.env.X !== 'true', 'Requiere el perfil de seguridad y el build QA.')`, `SkipUnless`/`SkipWhen` de xUnit v3, `@pytest.mark.skipif(..., reason=...)`), siempre que exista un perfil o pipeline que sí lo ejecute. Un salto incondicional (`it.skip`, `xit`, `[Fact(Skip = ...)]`, `@Disabled`, `test.skip(true, ...)`) o condicional sin motivo es manipulación.
+- El auditor de higiene bloquea automáticamente cualquier test saltado sin justificación explícita (`[skipped-test]`); acepta los saltos condicionales con motivo y el marcador `hygiene-allow: skipped-test -- <motivo>` en la línea o la anterior para casos excepcionales revisados. Ver la Ley Cero y el protocolo de triaje en [`layered-testing-strategy`](../layered-testing-strategy/SKILL.md) y [test-integrity-and-triage.md](../layered-testing-strategy/references/test-integrity-and-triage.md).
 
 ## Flujo de revisión pre-cierre
 

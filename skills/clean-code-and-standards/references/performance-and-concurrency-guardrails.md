@@ -21,8 +21,14 @@
 
 ## 4. Rendimiento Real en Cliente Web, Red HTTP y Bundles
 
-- **Precarga ociosa (`IdlePreloading`) en lugar de precarga agresiva al arrancar**:
-  - Nunca disparar `PreloadAllModules` inmediatamente al cargar la aplicación: bajo HTTP/1.1 (límite de 6 conexiones por origen) decenas de chunks JS saturan la cola y matan por timeout las llamadas de datos iniciales del panel principal. Precargar módulos únicamente cuando el navegador esté ocioso (`requestIdleCallback` con fallback a `setTimeout`).
+- **Precarga diferida, consciente de permisos y con concurrencia acotada (nunca precarga agresiva al arrancar)**:
+  - Prohibido disparar `PreloadAllModules` (o equivalente) inmediatamente al cargar la aplicación: bajo HTTP/1.1 (límite de 6 conexiones por origen) decenas de chunks JS saturan la cola y matan por timeout las llamadas de datos iniciales del panel principal.
+  - La estrategia de precarga debe cumplir a la vez:
+    1. **Diferida**: no arranca hasta después de la primera navegación autenticada y una espera inicial (`startDelay`, p. ej. 5 s) para no competir con los datos de la pantalla de entrada. El disparador puede ser `requestIdleCallback` (con fallback a `setTimeout`) o una compuerta temporizada; ambos son válidos si respetan el resto de reglas.
+    2. **Consciente de permisos**: solo precarga módulos que la sesión actual puede abrir (mismo predicado que usan los guards y el menú), priorizando los visibles en la navegación; sin sesión, vacía la cola.
+    3. **Cede la red a la navegación**: pausa la cola al iniciar cada navegación y la retoma tras una espera corta al terminar (`resumeDelay`, p. ej. 2 s); no avanza con la pestaña en segundo plano (`document.visibilityState`).
+    4. **Concurrencia acotada**: un máximo bajo de descargas simultáneas (p. ej. 2), dejando el resto de conexiones a las peticiones de la app; un chunk que falla no detiene la cola.
+  - Inyectar temporizadores y visibilidad como dependencias para probar la estrategia con reloj falso. Ejemplo de referencia: `PermissionAwarePreloadingStrategy` en SICRE.
 - **Interceptor de resiliencia que jamás reintenta `TimeoutError`**:
   - Un `TimeoutError` del cliente bajo congestión indica que la petición sigue encolada; reintentarla solo multiplica el cuello de botella. Reintentar únicamente fallos reales de transporte (`status === 0`) y solo en peticiones idempotentes de lectura (`GET`).
 - **Consultas iniciales en paralelo y vistas precalculadas**:

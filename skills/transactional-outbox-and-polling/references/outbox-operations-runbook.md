@@ -5,9 +5,9 @@ Plantilla de procedimientos de soporte para operar el Outbox en producción sin 
 ## 1. Lectura de Salud (`Health Checks`)
 
 - **`GET /health/live`**: público; comprueba únicamente que el proceso responde (no toca base de datos).
-- **`GET /health/ready`**: público agregado; verifica conectividad a base de datos y que el procesador Outbox no esté degradado, sin filtrar conteos internos.
-- **`GET /health/details`** *(protegido con permiso administrativo)*: expone `pendingCount`, `oldestPendingAgeSeconds`, `deadLetterCount` y `consecutiveProcessorFailures`.
-  - Si `oldestPendingAgeSeconds` crece de forma sostenida con `consecutiveProcessorFailures == 0`, verificar que el proceso del servidor no esté entrando en suspensión por inactividad (*Idle Timeout*).
+- **`GET /health/ready`**: público agregado y con límite de tasa por IP (es anónimo y toca la base de datos); verifica conectividad a base de datos y que el procesador Outbox no esté degradado, sin filtrar conteos internos.
+- **`GET /health/details`** *(exige autenticación con permiso o rol de administración, además del límite de tasa)*: expone el número de mensajes pendientes, la antigüedad del pendiente más viejo en segundos, el número de mensajes en dead-letter, las vueltas consecutivas fallidas del procesador y la última vuelta. Los nombres de campo los fija cada proyecto (p. ej. `pendingCount`, `oldestPendingAgeSeconds`, `deadLetterCount`, `consecutiveFailures`, `lastRunUtc` en SICRE); documentarlos en el runbook del proyecto.
+  - Si la antigüedad del pendiente más viejo crece de forma sostenida con cero fallos consecutivos, verificar que el proceso del servidor no esté entrando en suspensión por inactividad (*Idle Timeout*).
 
 ## 2. Diagnóstico de mensajes en `Dead-Letter`
 
@@ -48,3 +48,21 @@ Para detener temporalmente el despacho (por ejemplo, caída prolongada del prove
 1. Configurar la variable de entorno del servicio `Outbox__Enabled = false` y reciclar el proceso.
 2. Las transacciones de negocio seguirán confirmando y almacenando filas en `outbox_messages` con normalidad.
 3. Al restablecer `Outbox__Enabled = true`, el procesador drenará el backlog acumulado en orden cronológico respetando `batchSize`.
+
+### Pausar un único mensaje
+
+Para retener un mensaje concreto (p. ej. un envío sospechoso o un destinatario por confirmar) sin detener el resto, enviarlo a dead-letter a mano con una sentencia acotada por `id` que no toque mensajes en curso ni ya resueltos; luego se reencola con el procedimiento de la sección 3:
+
+```sql
+UPDATE outbox_messages
+SET dead_lettered_at_utc = CURRENT_TIMESTAMP,
+    last_error = 'ManualHold',
+    locked_by = NULL,
+    locked_until_utc = NULL
+WHERE id = :messageId
+  AND processed_at_utc IS NULL
+  AND dead_lettered_at_utc IS NULL
+  AND (locked_until_utc IS NULL OR locked_until_utc <= CURRENT_TIMESTAMP);
+```
+
+Si afecta `0` filas, el mensaje ya se procesó, ya estaba retenido o un worker lo tiene en curso: revisar su estado antes de repetir.

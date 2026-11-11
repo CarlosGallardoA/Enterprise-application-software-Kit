@@ -40,13 +40,13 @@ El kit es **100 % agnóstico de lenguaje y framework** (compatible con TypeScrip
 La mayoría de los kits de instrucciones para IA se limitan a listas pasivas de consejos (*prompts*) que se degradan con el tiempo o generan código desordenado. Este kit implementa el estándar riguroso de ingeniería de grado institucional:
 
 * **100 % Agnóstico e Independiente**: Los patrones arquitectónicos, las reglas de concurrencia, las políticas de seguridad y la higiene se aplican con igual rigor en una API en ASP.NET Core / C#, servicios en Go, microservicios en Python o aplicaciones web en Next.js / Vue / Angular.
-* **Ley Cero de Integridad de Pruebas (*Anti-Tampering Law*)**: Queda terminantemente prohibido modificar, relajar o silenciar (`skip`) una prueba que falla solo para conseguir un pipeline en verde. Todo fallo se asume como indicio de un defecto real en el código de producción.
+* **Ley Cero de Integridad de Pruebas (*Anti-Tampering Law*)**: Queda terminantemente prohibido modificar, relajar o silenciar (`skip`) una prueba que falla solo para conseguir un pipeline en verde. Todo fallo se asume como indicio de un defecto real en el código de producción. Solo se admiten saltos condicionales ligados a un entorno o perfil explícito y con motivo escrito (p. ej. una suite de seguridad que corre solo sobre el artefacto compilado).
 * **Guardrails Automatizados sin Dependencias**: Incluye **6 scripts en Node.js puro** (`.mjs`, runtime soportado y parcheado verificado) con cero dependencias en `npm`, listos para incorporarse como compuertas obligatorias de pre-commit y CI/CD.
-* **Tecnologías sin vulnerabilidades conocidas aplicables**: Las 9 skills exigen [la política de seguridad de tecnologías](skills/security-and-auditability/references/technology-security-policy.md): avisos oficiales vigentes, soporte y verificación de runtimes, dependencias directas/transitivas/de desarrollo, bibliotecas nativas, herramientas de CI, SO e imágenes. Cualquier severidad o comprobación incompleta bloquea la entrega. No se promete ausencia de vulnerabilidades desconocidas.
+* **Tecnologías sin vulnerabilidades conocidas aplicables**: Las 9 skills exigen [la política de seguridad de tecnologías](skills/security-and-auditability/references/technology-security-policy.md): avisos oficiales vigentes, soporte y verificación de runtimes, dependencias directas/transitivas/de desarrollo, bibliotecas nativas, herramientas de CI, SO e imágenes. Cualquier severidad o comprobación incompleta bloquea la entrega, salvo una excepción documentada con responsable humano, control compensatorio y fecha de vencimiento (vencida, vuelve a bloquear). No se promete ausencia de vulnerabilidades desconocidas.
 * **Validación *Fail-Fast* en Arranque y Triple Aislamiento en Disco**: Toda configuración crítica se valida al inicio (`ValidateOnStart`); el servidor mantiene separación física estricta entre carpeta de publicación (reemplazable en deploy), directorio documental persistente (`RootPath`) y anillo de llaves criptográficas/maestra `AES-256-GCM` resguardado fuera del almacenamiento documental.
-* **Ergonomía de Teclado, Precarga Ociosa y Cero PII en Navegador**: Paleta de comandos global accesible (`Ctrl+K` / `Cmd+K`), precarga ociosa (`IdlePreloading`) sin saturación de red, carga dinámica (`import()`) de SDKs pesados de autenticación federada y prohibición absoluta de almacenar PII en `localStorage`.
+* **Ergonomía de Teclado, Precarga Diferida y Cero PII en Navegador**: Paleta de comandos global accesible (`Ctrl+K` / `Cmd+K`), precarga diferida filtrada por permisos y con concurrencia acotada, sin saturación de red, carga dinámica (`import()`) de SDKs pesados de autenticación federada y prohibición absoluta de almacenar PII en `localStorage`.
 * **Optimización de Contexto (*Progressive Disclosure*)**: Los agentes solo cargan en memoria el nombre y activadores de la skill. El archivo `SKILL.md` se lee únicamente bajo demanda, y las referencias profundas (`references/`) se consultan solo cuando la tarea técnica específica lo exige.
-* **Gobernanza Documental Estricta**: Modelo de entrada breve (`AGENTS.md`) con derivación a 10 subcarpetas canónicas en `docs/` y bitácora inmutable (`docs/historial/changelog.md`) con entradas congeladas correlativas `### AAAA-MM-DD (N)`.
+* **Gobernanza Documental Estricta**: Modelo de entrada breve (`AGENTS.md`) con derivación a 5 subcarpetas obligatorias y 5 opcionales canónicas en `docs/` y bitácora inmutable (`docs/historial/changelog.md`) con entradas congeladas correlativas `### AAAA-MM-DD (N)`.
 
 ---
 
@@ -86,7 +86,7 @@ description: >-
 |---|---|---|---|---|
 | 1 | [`enterprise-app-blueprint`](#1-enterprise-app-blueprint) | Estructura base de repositorio, gobernanza documental, contrato universal de errores, concurrencia optimista y paginación. | `nuevo proyecto`, `blueprint`, `AGENTS.md`, `contrato de errores`, `concurrencia` | Scripts: `scaffold-project-docs`, `check-docs-governance` + 5 plantillas |
 | 2 | [`hexagonal-vertical-slices`](#2-hexagonal-vertical-slices) | Arquitectura Hexagonal simétrica + Vertical Slices backend/frontend, raíces de composición en 3 niveles (global, shell, ruta diferida) protegiendo el code-splitting. | `arquitectura hexagonal`, `vertical slicing`, `ports and adapters`, `boundaries` | Script: `check-architecture-boundaries` + `boundaries.config.example.json` |
-| 3 | [`clean-code-and-standards`](#3-clean-code-and-standards) | Política de 0 advertencias, higiene de comentarios, reloj determinista, rendimiento real (precarga ociosa, SDKs dinámicos, fuentes auto-hospedadas) y timeouts escalonados. | `clean code`, `revisión de código`, `código muerto`, `zero warnings`, `rendimiento` | Script: `audit-code-hygiene` + 2 guías de referencia |
+| 3 | [`clean-code-and-standards`](#3-clean-code-and-standards) | Política de 0 advertencias, higiene de comentarios, reloj determinista, rendimiento real (precarga diferida por permisos, SDKs dinámicos, fuentes auto-hospedadas) y timeouts escalonados. | `clean code`, `revisión de código`, `código muerto`, `zero warnings`, `rendimiento` | Script: `audit-code-hygiene` + 2 guías de referencia |
 | 4 | [`layered-testing-strategy`](#4-layered-testing-strategy) | Ley Cero Anti-Tampering, pirámide de pruebas honesta (fakes manuales, fixtures completas, BD efímera, E2E). | `tests`, `testing`, `pruebas unitarias`, `fakes`, `disposable database` | Manual: `test-integrity-and-triage` + guías de fakes/fixtures |
 | 5 | [`transactional-outbox-and-polling`](#5-transactional-outbox-and-polling) | Efectos secundarios durables (*at-least-once*), Outbox con leases, jobs de barrido SLA y sondeo disciplinado (`PollScheduler`). | `outbox`, `eventos durables`, `background jobs`, `SLA sweep`, `polling` | Especificaciones de Outbox, leases SQL y `PollScheduler` |
 | 6 | [`institutional-design-system-ux`](#6-institutional-design-system-ux) | Tokens semánticos de 2 niveles, paleta `Ctrl+K` accesible (cero PII en `localStorage`), WCAG 2.1 AA e i18n tipada con paridad exacta de claves. | `sistema de diseño`, `tokens`, `WCAG`, `accesibilidad`, `vistas operativas`, `i18n`, `Ctrl+K` | Scripts: `check-design-system`, `check-i18n-parity` + `DESIGN.template.md`, `tokens.template.css` |
@@ -100,10 +100,10 @@ description: >-
 
 #### 1. `enterprise-app-blueprint`
 Establece los cimientos estructurales y normativos para que una aplicación crezca sin deriva técnica:
-* **Entrada documental controlada**: Mantiene `AGENTS.md` como índice ejecutivo breve (< 160 líneas), canalizando todo detalle normativo a las 10 subcarpetas de `docs/` (`arquitectura/`, `requisitos/`, `guias/`, `operacion/`, `decisiones/`, `auditorias/`, `planes/`, `reglas/`, `estandares/`, `historial/`).
+* **Entrada documental controlada**: Mantiene `AGENTS.md` como índice ejecutivo breve (≤ 120 líneas), canalizando todo detalle normativo a `docs/`: 5 subcarpetas obligatorias (`arquitectura/`, `reglas/`, `estandares/`, `operacion/`, `historial/`) y 5 opcionales canónicas (`requisitos/`, `guias/`, `decisiones/`, `auditorias/`, `planes/`).
 * **Bitácora Inmutable**: Impone `docs/historial/changelog.md` con formato estricto `### AAAA-MM-DD (N)` donde cada registro documenta honestamente alcance, decisiones y verificación.
-* **Contrato Universal de Errores e i18n**: Respuestas controladas `{ reason: "STABLE_CODE", details? }` listas para traducción en cliente. Las excepciones internas (500) ocultan detalles y retornan un `traceId` único correlacionado con logs del servidor.
-* **Concurrencia Optimista por Defecto**: Actualizaciones condicionadas a token de versión (`rowVersion`, `version` o `ETag`), respondiendo `412 Precondition Failed` ante colisiones.
+* **Contrato Universal de Errores e i18n**: Respuestas controladas `{ reason: "STABLE_CODE", details? }` listas para traducción en cliente, también en `401`/`403`, y tipadas en cada endpoint. Las excepciones internas (500) ocultan detalles y retornan un `traceId` único correlacionado con logs del servidor.
+* **Concurrencia Optimista por Defecto**: Actualizaciones condicionadas a token de versión (`rowVersion`, `version` o `ETag`) en toda entidad con edición concurrente plausible (incluidos ajustes clave/valor y datos maestros administrados), respondiendo `412 Precondition Failed` ante colisiones.
 * **Paginación en Servidor y Baja Lógica**: Prohibición de endpoints que devuelvan colecciones no acotadas a memoria; baja lógica (`isActive = false`) y auditoría transversal en entidades operativas.
 
 #### 2. `hexagonal-vertical-slices`
@@ -111,7 +111,7 @@ Resuelve la organización del código respondiendo simultáneamente a dos pregun
 * **Dirección de Dependencias (Hexagonal)**: El Dominio (`domain`) no depende de nada externo; la Aplicación (`application`) orquesta casos de uso y define puertos; la Infraestructura (`infrastructure`) implementa los adaptadores; la Presentación (`ui` / `api`) solo consume puertos de entrada.
 * **Propiedad de Negocio (Vertical Slices)**: Cada funcionalidad (`features/<nombre-feature>/`) encapsula sus casos de uso, contratos y adaptadores, erradicando carpetas horizontales genéricas y desordenadas.
 * **Composición por Alcance y Carga Diferida Real (sin anular el code-splitting)**:
-  * *Nivel global (`app.config`)*: Exclusivamente fontanería transversal (router con precarga ociosa `IdlePreloading`, cliente HTTP e interceptores, error handler, i18n base y wiring mínimo de sesión para `authGuard`). **Prohibido** registrar casos de uso o adaptadores de features aquí, ya que arrastraría sus módulos al bundle inicial.
+  * *Nivel global (`app.config`)*: Exclusivamente fontanería transversal (router con precarga diferida por permisos, cliente HTTP e interceptores, error handler, i18n base y wiring mínimo de sesión para `authGuard`). **Prohibido** registrar casos de uso o adaptadores de features aquí, ya que arrastraría sus módulos al bundle inicial.
   * *Nivel shell autenticada (`''` en `app.routes`)*: Wiring compartido por 2 o más features activas tras iniciar sesión (notificaciones/heartbeat de cabecera, borrador compartido), sin duplicarlo ni subirlo a `app.config`.
   * *Nivel de ruta diferida (`loadChildren` → `<feature>.routes`)*: Cada feature declara sus propios `providers` (adaptador HTTP + casos de uso + stores). Los adaptadores de librerías voluminosas y condicionales (ej. SDKs de SSO/OIDC) las cargan con `import()` dinámico en su primer uso.
 
@@ -121,7 +121,7 @@ Garantiza precisión y mantenibilidad con reglas no negociables:
 * **Higiene Quirúrgica de Comentarios**: Prohibición de narrativa histórica ("corregido según auditoría", "a pedido del usuario") o paráfrasis obvia. Los comentarios explican exclusivamente invariantes técnicas no obvias o limitaciones de integraciones externas.
 * **Reloj Inyectado**: Prohibición del uso estático o directo del reloj del sistema (`DateTime.UtcNow`, `new Date()`, `time.Now()`) en dominios o casos de uso; siempre se inyecta un proveedor de tiempo abstracto para garantizar pruebas deterministas.
 * **Rendimiento Real en Cliente Web y Red HTTP**:
-  * *Precarga ociosa (`IdlePreloading` con `requestIdleCallback`)*: Nunca usar `PreloadAllModules` agresivo al arrancar; bajo HTTP/1.1 (límite de 6 conexiones por origen) satura la red y provoca timeouts en llamadas iniciales.
+  * *Precarga diferida, filtrada por permisos y con concurrencia acotada*: Nunca usar `PreloadAllModules` inmediato al arrancar; bajo HTTP/1.1 (límite de 6 conexiones por origen) satura la red y provoca timeouts en llamadas iniciales. Precargar solo los módulos que el usuario puede abrir, después de la primera navegación autenticada, cediendo la red al navegar y con pocas descargas simultáneas. El disparador puede ser `requestIdleCallback` o un temporizador.
   * *Interceptor de resiliencia sin reintentos de `TimeoutError`*: Un timeout bajo congestión indica encolamiento; reintentarlo agrava el cuello de botella. Solo reintentar fallos reales de transporte (`status === 0`) en lecturas idempotentes (`GET`).
   * *Consultas paralelas y campos computados*: Paralelización de lecturas de vista con `Promise.all` y formateos precalculados con señales/selectores memoizados (`computed()`) en lugar de invocar métodos por cada fila en plantillas.
   * *Carga bajo demanda (`import()` dinámico)* de SDKs federados pesados (~250+ kB) y **tipografías auto-hospedadas (`.woff2`)** para eliminar llamadas externas a Google Fonts en runtime y blindar la CSP.
@@ -131,7 +131,7 @@ Garantiza precisión y mantenibilidad con reglas no negociables:
 
 #### 4. `layered-testing-strategy`
 Implementa una suite de pruebas predecible y honesta:
-* **Ley Cero Anti-Tampering**: Si un test falla, la presunción absoluta es que existe un defecto real en el código de producción. Queda prohibido modificar la prueba, cambiar sus aserciones o marcarla como `skip` para forzar el verde en CI.
+* **Ley Cero Anti-Tampering**: Si un test falla, la presunción absoluta es que existe un defecto real en el código de producción. Queda prohibido modificar la prueba, cambiar sus aserciones o marcarla como `skip` para forzar el verde en CI. Un salto condicional a un perfil explícito, con motivo escrito, no es manipulación.
 * **Pirámide por Responsabilidad**:
   * *Dominio*: Pruebas unitarias puras y ultrarrápidas sin dobles de prueba.
   * *Casos de Uso*: Pruebas con fakes explícitos en memoria (escritos a mano con interfaces limpias), evitando librerías de mocking acopladas a la implementación interna.
@@ -155,8 +155,8 @@ Diseño de software empresarial centrado en la usabilidad, la ergonomía y la ac
   * Expedientes, asistentes multi-etapa con preservación de estado, tablas con transformación automática a tarjetas móviles y modales seguros.
   * *Paleta de comandos accesible*: Diálogo modal con `role="combobox"`, sincronización `aria-activedescendant` al navegar con flechas, ejecución con `Enter`, `Escape` y devolución limpia del foco. Búsquedas con debounce y cancelación inmediata de peticiones en vuelo.
   * *Higiene estricta de `localStorage` (Cero PII)*: En la lista de recientes, almacenar exclusivamente rutas o claves estáticas de navegación (`"nav.incidents"`). Prohibido almacenar expedientes, nombres o datos de usuarios; purga automática de entradas heredadas.
-* **Accesibilidad WCAG 2.1 AA**: Paridad de foco obligatoria (`:focus-visible` explícito; prohibido `outline: none` sin reemplazo visible), ratios de contraste certificados y navegación íntegra por teclado.
-* **Internacionalización y Paridad de Diccionarios**: Cero cadenas literales en plantillas HTML. Validación estática obligatoria de paridad exacta de claves, interpolación y traducciones no vacías en todos los idiomas.
+* **Accesibilidad WCAG 2.1 AA**: Paridad de foco obligatoria (`:focus-visible` explícito; prohibido `outline: none` sin reemplazo visible). El anillo con `box-shadow` va acompañado de `outline: 2px solid transparent` para que sobreviva al Alto Contraste del sistema (`forced-colors`). Ratios de contraste documentados junto a cada token y comprobados con una herramienta nombrada, y navegación íntegra por teclado.
+* **Internacionalización y Paridad de Diccionarios**: Cero cadenas literales en plantillas HTML. Validación estática obligatoria de paridad exacta de claves, interpolación y traducciones no vacías en todos los idiomas, y de que toda clave usada en el código exista en los diccionarios.
 
 #### 7. `security-and-auditability`
 Seguridad defensiva en profundidad desde las bases del código:
@@ -177,7 +177,7 @@ Entrega confiable y reproducible en servidores empresariales:
 * **Servidor Web y Red**:
   * **HTTP/2 activo** sobre HTTPS/TLS 1.2+ (elimina el cuello de botella de 6 conexiones de HTTP/1.1) y **compresión estática/dinámica** (`br`/`gzip`) verificada.
 * **Separación de Privilegios en Base de Datos**:
-  * La API de producción **nunca ejecuta DDL ni crea usuarios privilegiados al iniciar**. Las migraciones se gestionan mediante la herramienta CLI independiente `DbMigrator` con triple identidad SQL (Migración, Runtime y Auditoría) y manifiesto con integridad `SHA-256`.
+  * La API de producción **nunca ejecuta DDL ni crea usuarios privilegiados al iniciar**. Las migraciones se gestionan mediante la herramienta CLI independiente `DbMigrator` con guardas escalonadas: migración directa solo en Desarrollo sobre loopback; `--target-database` coincidente en cualquier destino remoto; y en Producción, script revisado con manifiesto `SHA-256`, ticket de respaldo e identidad de migración separada de la del runtime.
 * **Compuertas de Calidad CI/CD**: Pipeline de 10 etapas automatizadas antes de autorizar el paso a producción.
 
 #### 9. `audit-and-skill-orchestration`
@@ -195,7 +195,7 @@ flowchart TD
     A["1. enterprise-app-blueprint<br/>(Scaffold docs, changelog, contratos de error)"] --> B["2. hexagonal-vertical-slices<br/>(Fronteras de módulos, puertos y 3 niveles de wiring)"]
     B --> C["3. institutional-design-system-ux<br/>(DESIGN.md, tokens, paridad i18n, Ctrl+K accesible)"]
     C --> D["4. security-and-auditability<br/>(Sesiones, anti-IDOR, AES-256-GCM, CSP, sin PII)"]
-    D --> E["5. clean-code-and-standards + layered-testing-strategy<br/>(Implementación TDD, precarga ociosa, fakes, BD efímera)"]
+    D --> E["5. clean-code-and-standards + layered-testing-strategy<br/>(Implementación TDD, precarga diferida, fakes, BD efímera)"]
     E --> F["6. transactional-outbox-and-polling<br/>(Eventos at-least-once, SLA sweeps, PollScheduler)"]
     F --> G["7. production-release-and-migrations<br/>(DbMigrator, ValidateOnStart, triple aislamiento, HTTP/2)"]
     G --> H["8. audit-and-skill-orchestration<br/>(Auditorías adversariales periódicas y remediación)"]
@@ -210,15 +210,15 @@ El kit provee **6 herramientas automáticas de validación** desarrolladas en No
 Antes de ejecutarlas, verificar el runtime contra los avisos oficiales vigentes. [.node-version](.node-version) fija Node.js `24.22.1`, parche publicado para los avisos de octubre de 2026 y verificado el 2026-10-27; debe revisarse ante nuevos avisos, junto con cualquier biblioteca integrada y los runtimes usados por las acciones de CI. El archivo no actualiza automáticamente el Node instalado ni certifica versiones futuras. Los 6 validadores comprueban calidad estructural; cada proyecto debe implementar además la compuerta obligatoria de seguridad descrita en la política.
 
 ### 1. `scaffold-project-docs.mjs`
-Inicializa el gobierno documental del proyecto generando `AGENTS.md`, `DESIGN.md`, `.editorconfig`, `.gitignore` y las 10 subcarpetas de `docs/` con su primera entrada en `changelog.md`:
+Inicializa el gobierno documental del proyecto generando `AGENTS.md`, `DESIGN.md`, `.editorconfig`, `.gitignore`, las subcarpetas de `docs/`, el informe inicial `docs/auditorias/seguridad-tecnologias.md` y la primera entrada en `changelog.md`:
 ```bash
 node skills/enterprise-app-blueprint/scripts/scaffold-project-docs.mjs --target . --name "NombreProyecto" [--force]
 ```
 
 ### 2. `check-docs-governance.mjs`
-Verifica que `AGENTS.md` permanezca conciso (< 160 líneas), que no existan archivos Markdown sueltos en la raíz de `docs/`, que la secuencia del `changelog.md` sea correlativa y que no haya enlaces relativos rotos:
+Verifica que `AGENTS.md` permanezca conciso (≤ 120 líneas); que no existan archivos sueltos de ninguna extensión en la raíz de `docs/`; que todos los encabezados del `changelog.md` sean correlativos, sin duplicados y en orden descendente (`--changelog-from N` excluye historial heredado); que existan y estén enlazados la política e informe de seguridad de tecnologías; que no haya enlaces relativos rotos; y, con `--e2e-dir`, que los specs E2E en disco coincidan con el registro de `AGENTS.md`:
 ```bash
-node skills/enterprise-app-blueprint/scripts/check-docs-governance.mjs --root . [--max-agents-lines 160]
+node skills/enterprise-app-blueprint/scripts/check-docs-governance.mjs --root . [--max-agents-lines 120] [--changelog-from N] [--e2e-dir e2e]
 ```
 
 ### 3. `check-architecture-boundaries.mjs`
@@ -239,8 +239,9 @@ Valida el cumplimiento estricto del sistema de diseño:
 * Detecta colores hexadecimales literales fuera del archivo de tokens.
 * Bloquea el consumo directo de tokens primitivos (`--brand-*`).
 * Prohíbe `transition: all`.
-* Exige paridad de foco accesible (prohíbe `outline: none` sin indicador `:focus-visible`).
-* Detecta cadenas de texto sin traducir en plantillas UI.
+* Exige paridad de foco accesible por regla y selector (prohíbe `outline: none` sin indicador `:focus-visible`) y, con `--require-forced-colors-focus`, el contorno transparente para Alto Contraste.
+* Detecta cadenas de texto sin traducir en plantillas UI, incluidos `aria-label`, `title`, `placeholder` y `alt`, sin confundir expresiones del framework con texto.
+* Acepta marcadores de excepción del proyecto mediante alias (`--marker-alias`) y prefijos de primitivos configurables (`--primitive-prefix`).
 ```bash
 node skills/institutional-design-system-ux/scripts/check-design-system.mjs \
   --root . \
@@ -256,6 +257,7 @@ Validador estático de paridad e integridad de diccionarios de internacionalizac
 * Garantiza paridad exacta de árbol de claves (cero claves faltantes o huérfanas entre idiomas).
 * Prohíbe traducciones vacías o compuestas únicamente por espacios en blanco.
 * Verifica la correspondencia exacta de variables interpoladas (`{{param}}` y `{param}`).
+* Con `--check-usage <dirs>`, detecta claves literales usadas en el código que no existen en los diccionarios.
 ```bash
 node skills/institutional-design-system-ux/scripts/check-i18n-parity.mjs \
   --root . \

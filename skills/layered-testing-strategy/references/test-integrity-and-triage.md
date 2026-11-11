@@ -21,6 +21,19 @@ Quedan **terminantemente prohibidas** todas las variantes directas e indirectas 
 
 ---
 
+## Salto condicional legítimo frente a manipulación
+
+Saltar una prueba no es manipulación cuando la prueba depende de un entorno que la corrida actual no tiene, y esa dependencia es explícita, verificable y está cubierta por otra corrida versionada. Deben cumplirse **las cuatro condiciones**:
+
+1. **Condición evaluada en código** contra una variable de entorno, perfil o capacidad concreta, nunca un `skip` incondicional (`test.skip(process.env.SECURITY_PREVIEW !== 'true', ...)`, `Assert.SkipUnless(condición, "motivo")` en xUnit v3, `pytest.mark.skipif(...)`).
+2. **Motivo escrito en la propia llamada**, que nombra el perfil o artefacto requerido (`'Requiere playwright.security.config.ts y el build QA'`).
+3. **Configuración dedicada y versionada que fija la condición** (p. ej. `playwright.security.config.ts` asignando la variable antes de cargar los specs) y un job de CI que la ejecuta: la prueba corre en algún lugar en cada integración.
+4. **Existía antes del fallo**: el salto forma parte del diseño de la suite, no se agregó después de ver la prueba en rojo.
+
+Si falta cualquiera, es la fila «Silenciar, saltar o borrar el caso que falla» de la tabla anterior. Un salto por entorno nunca encubre una prueba que falla en el perfil donde sí debe correr.
+
+---
+
 ## Protocolo obligatorio de 4 pasos cuando un test falla
 
 Cada vez que una prueba (preexistente o recién escrita) falle:

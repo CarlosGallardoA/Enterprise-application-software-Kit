@@ -14,7 +14,8 @@ interface PollScheduler {
 
 1. **Conciencia de visibilidad (`visibilitychange`)**:
    - Si `document.visibilityState !== 'visible'`, ningún ciclo dispara peticiones HTTP.
-   - Al transicionar de oculto a `'visible'`, si ya transcurrió el intervalo desde la última corrida (o nunca corrió en visible), ejecuta **de inmediato** para eliminar datos obsoletos al regresar a la pestaña.
+   - Al transicionar de oculto a `'visible'` (o al recuperar el foco de la ventana), aplicar `refreshIfStale`: ejecutar **de inmediato** si el último éxito de la tarea es más antiguo que un umbral de frescura (p. ej. 20 s) o nunca corrió, aunque el intervalo completo no haya transcurrido; si es más reciente, conservar el plazo ya agendado. El umbral es menor que el intervalo: lo que importa al regresar es la edad del dato, no el ciclo del temporizador.
+   - **Conectividad (`online`/`offline`)**: con `navigator.onLine === false` ningún ciclo dispara peticiones (sigue reprogramando sin red); al recibir `online` con la pestaña visible, aplicar el mismo `refreshIfStale` a todas las tareas ociosas. Exponer el estado de conexión como señal para que la UI muestre un aviso de «Sin conexión» en vez de errores repetidos.
 2. **Desincronización (`Jitter ±15 %`)**:
    - Cada próximo ciclo calcula `effectiveDelay = baseInterval * backoffFactor * randomBetween(0.85, 1.15)` evitando ráfagas sincronizadas (*thundering herd*) entre pestañas o clientes.
 3. **Degradación por inactividad (`Idle Backoff ×3`)**:
@@ -36,4 +37,15 @@ En lugar de mantener un sondeo para permisos/sesión y otro separado para el con
    - En el servidor, optimizar el caso común: si el conteo rápido indexado `(recipientId, isRead = false)` da `0`, responder de inmediato sin consultas adicionales de alcance organizacional; además, clasificar esta ruta en nivel `Debug` en el middleware de logs de peticiones para no inundar el archivo diario con sondeos `200 OK`.
 2. **Doble disparador en el contenedor principal (`Shell`)**:
    - Ciclo periódico vía `PollScheduler` cada **60 segundos**.
-   - Disparo asíncrono inmediato en cada evento `NavigationEnd` del router (sin bloquear la transición visual): si un administrador acaba de revocar un permiso del usuario actual, el store de sesión se actualiza al instante y el guard redirige a `/acceso-denegado` sin esperar al minuto ni pedir F5.
+   - Disparo asíncrono en cada evento `NavigationEnd` del router (sin bloquear la transición visual) mediante `refreshIfStale`: si el último heartbeat exitoso tiene menos del umbral de frescura (p. ej. 20 s), no se repite la petición, pero los permisos de la ruta nueva se validan igual contra la sesión ya cargada. Así, si un administrador acaba de revocar un permiso del usuario actual, el store de sesión se actualiza en la siguiente navegación y el guard redirige a `/acceso-denegado` sin esperar al minuto ni pedir F5, sin multiplicar peticiones al navegar rápido.
+
+---
+
+## 3. Sondeo de Confirmación Acotado tras una Acción del Usuario
+
+Cuando el usuario dispara un efecto asíncrono (p. ej. reenviar un correo que despacha el Outbox) y la pantalla debe reflejar su desenlace, no registrar un sondeo periódico indefinido:
+
+1. Consultar el estado con un número máximo de intentos (p. ej. 8) y espera creciente acotada (p. ej. desde 1 s, ×1,5 por intento, hasta 5 s).
+2. Detener en cuanto aparece el desenlace esperado (un intento nuevo registrado o un estado terminal como `Uncertain`), al agotar los intentos o al destruir la vista (bandera de cancelación revisada antes y después de cada petición).
+3. Al agotar los intentos sin desenlace, dejar visible el último estado conocido y la acción de actualizar manual; el sondeo periódico general, si existe, no se acelera por esta causa.
+4. Mantener la lógica como función pura con `sleep` y `fetch` inyectados para probar la secuencia de esperas y las condiciones de parada sin temporizadores reales (p. ej. `claim-form-notification-polling.ts` en SICRE).
