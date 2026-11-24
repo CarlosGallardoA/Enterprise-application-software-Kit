@@ -15,6 +15,21 @@
 //   7. [no-hardcoded-ui-text] Detecta textos literales sin traducir en plantillas HTML (nodos de texto, interpolaciones
 //                             con literal y atributos aria-label/title/placeholder/alt). Desactivable con --skip-i18n.
 //   8. [unused-allow-marker]  Falla si un comentario `design-system-allow` ya no suprime ninguna regla real.
+//   9. [font-scale]           `font-size` (y el tamaño dentro del atajo `font:`) solo consume var(--text-*).
+//  10. [leading-scale]        `line-height` numérico (con o sin unidad, también tras `/` en `font:`) en vez de var(--leading-*).
+//  11. [font-weight-scale]    `font-weight` numérico o bold/bolder/lighter en vez de var(--font-weight-*). Los descriptores
+//                             @font-face no se evalúan (exigen un número literal).
+//  12. [flat-at-rest]         Tarjetas, paneles, franjas, mosaicos, filas, chips y superficies sin estado interactivo no
+//                             declaran sombra en reposo (solo none, var(--shadow-card) o var(--shadow-floating)).
+//                             Configurable con --card-selector-pattern <regex> y --flat-at-rest-values a,b.
+//  13. [shadow-literal]       Una sombra que repite literalmente el valor de un token --shadow-* del archivo de tokens.
+//  14. [shadow-ring-literal]  Un halo `0 0 0 Npx color-mix(...)` escrito fuera de tokens (fuera de reglas de foco, que ya
+//                             cubre focus-ring-token): extraerlo como --shadow-ring-*.
+//  15. [no-toast-literal]     Un toast armado con un string literal en código de producción en vez de texto traducido.
+//                             Prefijo de llamada configurable con --toast-pattern <regex> (por defecto toast.error|success|info|warning).
+//                             Se desactiva junto con --skip-i18n.
+//
+// Cualquier check puede desactivarse temporalmente con --skip-checks a,b (documentar el motivo en el script de lint).
 //
 // Excepciones auditables junto al código:
 //   CSS/JS: /* design-system-allow: <check> — razón técnica */
@@ -25,13 +40,14 @@
 // Alias de marcadores: un proyecto con su propio checker puede conservar sus nombres (hex-literal, primitive-leak,
 // transition-all, focus-visible, focus-ring, hardcoded-string, hardcoded-text). Los alias suprimen el hallazgo
 // equivalente, pero no se reportan como obsoletos: su vigencia la juzga el checker del proyecto, cuya granularidad
-// puede diferir. Los marcadores de checks que este script no implementa (p. ej. font-scale) se ignoran.
+// puede diferir. Los marcadores de checks que este script no implementa se ignoran.
 // Alias adicionales: --marker-alias nombre-proyecto=check-del-script[,otro=check].
 //
 // Uso:
 //   node check-design-system.mjs --root . --styles src/styles --app src/app --tokens src/styles/tokens.css \
-//     [--primitive-prefix --brand-,--acme-] [--marker-alias foo=no-hex-color] [--allow-literals SICRE,N/A] \
-//     [--require-forced-colors-focus] [--skip-i18n]
+//     [--primitive-prefix --brand-,--acme-] [--marker-alias foo=no-hex-color] [--allow-literals ACME,N/A] \
+//     [--require-forced-colors-focus] [--skip-i18n] [--skip-checks a,b] \
+//     [--card-selector-pattern '<regex>'] [--flat-at-rest-values none,var(--shadow-card)] [--toast-pattern '<regex>']
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,8 +59,23 @@ const KNOWN_CHECKS = new Set([
   'focus-visible-parity',
   'focus-ring-token',
   'focus-forced-colors',
-  'no-hardcoded-ui-text'
+  'no-hardcoded-ui-text',
+  'font-scale',
+  'leading-scale',
+  'font-weight-scale',
+  'flat-at-rest',
+  'shadow-literal',
+  'shadow-ring-literal',
+  'no-toast-literal'
 ]);
+
+// Último segmento del selector con letra/dígito alrededor del nombre: ".indicator-card--teal" sí, ".arrow" no.
+const DEFAULT_CARD_SELECTOR_PATTERN = String.raw`(?:^|[^a-zA-Z0-9])(?:card|panel|strip|tile|row|chip|surface)s?(?![a-zA-Z0-9])`;
+// Estado interactivo o de selección: no es "reposo".
+const INTERACTIVE_STATE_RX =
+  /(:hover|:focus|:active|:checked|\[open\]|\[aria-(?:selected|expanded|current|pressed|checked)|\.is-|--(?:checked|selected|active|expanded|current|dragging|dragover)\b)/i;
+const DEFAULT_FLAT_AT_REST_VALUES = ['none', 'var(--shadow-card)', 'var(--shadow-floating)'];
+const DEFAULT_TOAST_PATTERN = String.raw`\btoast\.(?:error|success|info|warning)\(`;
 
 const DEFAULT_MARKER_ALIASES = {
   'hex-literal': 'no-hex-color',
@@ -59,7 +90,17 @@ const DEFAULT_MARKER_ALIASES = {
 const USAGE =
   'Uso: node check-design-system.mjs [--root .] [--styles src/styles] [--app src/app] [--tokens src/styles/tokens.css]\n' +
   '       [--primitive-prefix --brand-[,--otro-]] [--marker-alias alias=check[,alias=check]]\n' +
-  '       [--allow-literals A,B] [--require-forced-colors-focus] [--skip-i18n]';
+  '       [--allow-literals A,B] [--require-forced-colors-focus] [--skip-i18n] [--skip-checks a,b]\n' +
+  "       [--card-selector-pattern '<regex>'] [--flat-at-rest-values none,var(--shadow-card)] [--toast-pattern '<regex>']";
+
+function compileRegex(source, flags, flag) {
+  try {
+    return new RegExp(source, flags);
+  } catch (error) {
+    console.error(`✗ ${flag} no es una expresión regular válida: ${error.message}`);
+    process.exit(2);
+  }
+}
 
 function parseArgs(argv) {
   const args = {
@@ -71,6 +112,10 @@ function parseArgs(argv) {
     markerAliases: { ...DEFAULT_MARKER_ALIASES },
     requireForcedColorsFocus: false,
     skipI18n: false,
+    skipChecks: new Set(),
+    cardSelectorPattern: DEFAULT_CARD_SELECTOR_PATTERN,
+    flatAtRestValues: [...DEFAULT_FLAT_AT_REST_VALUES],
+    toastPattern: DEFAULT_TOAST_PATTERN,
     allowedLiterals: ['ID', 'Esc', 'OK', 'PDF', 'CSV', 'JSON', 'UTC']
   };
   const list = (value) =>
@@ -98,6 +143,17 @@ function parseArgs(argv) {
     } else if (flag === '--require-forced-colors-focus') args.requireForcedColorsFocus = true;
     else if (flag === '--skip-i18n') args.skipI18n = true;
     else if (flag === '--allow-literals' && hasValue) args.allowedLiterals.push(...list(argv[++i]));
+    else if (flag === '--skip-checks' && hasValue) {
+      for (const check of list(argv[++i])) {
+        if (!KNOWN_CHECKS.has(check)) {
+          console.error(`✗ --skip-checks: check desconocido "${check}". Usa uno de [${[...KNOWN_CHECKS].join(', ')}].`);
+          process.exit(2);
+        }
+        args.skipChecks.add(check);
+      }
+    } else if (flag === '--card-selector-pattern' && hasValue) args.cardSelectorPattern = argv[++i];
+    else if (flag === '--flat-at-rest-values' && hasValue) args.flatAtRestValues = list(argv[++i]);
+    else if (flag === '--toast-pattern' && hasValue) args.toastPattern = argv[++i];
     else if (flag === '--help' || flag === '-h') {
       console.log(USAGE);
       process.exit(0);
@@ -107,6 +163,12 @@ function parseArgs(argv) {
     console.error('✗ --primitive-prefix requiere al menos un prefijo (ej. --brand-).');
     process.exit(2);
   }
+  if (args.skipI18n) {
+    args.skipChecks.add('no-hardcoded-ui-text');
+    args.skipChecks.add('no-toast-literal');
+  }
+  args.cardSelectorRx = compileRegex(args.cardSelectorPattern, 'i', '--card-selector-pattern');
+  args.toastRx = compileRegex(`${args.toastPattern}\\s*(['"\`])`, 'g', '--toast-pattern');
   return args;
 }
 
@@ -266,6 +328,55 @@ function insideForcedColors(rule) {
   return rule.atRules.some((a) => /forced-colors\s*:\s*active/i.test(a));
 }
 
+const CSS_WIDE_KEYWORD_RX = /^(?:inherit|initial|unset|revert|revert-layer)$/i;
+const SCALE_DECLARATION_RX = /(?<![\w-])(font-size|line-height|font-weight|font)\s*:\s*([^;]+)/g;
+const NUMERIC_LENGTH_RX = /(?:^|\s)\d*\.?\d+(?:px|rem|em|%|pt|vw|vh|vmin|vmax|ch|ex)?(?=\s|$)/;
+const NUMERIC_WEIGHT_RX = /(?:^|\s)(?:[1-9]00|bold|bolder|lighter)(?=\s|$)/i;
+
+function withoutImportant(value) {
+  return value.replace(/\s*!important\s*$/i, '').trim();
+}
+
+// Quita las llamadas var(...) (con un nivel de paréntesis anidado) para evaluar solo los literales del valor.
+function withoutVars(value) {
+  return value.replace(/var\((?:[^()]|\([^()]*\))*\)/g, ' ');
+}
+
+// Devuelve los hallazgos de escala { check, detail } de una declaración font-size/line-height/font-weight/font.
+function scaleFindings(property, rawValue) {
+  const value = withoutImportant(rawValue);
+  if (CSS_WIDE_KEYWORD_RX.test(value)) return [];
+  if (property === 'font-size') {
+    return /^var\(\s*--text-/.test(value) ? [] : [{ check: 'font-scale', detail: `font-size: ${value}` }];
+  }
+  if (property === 'line-height') {
+    if (/^normal$/i.test(value) || /^var\(\s*--leading-/.test(value)) return [];
+    return /^\d*\.?\d+(?:px|rem|em|%)?$/.test(value) ? [{ check: 'leading-scale', detail: `line-height: ${value}` }] : [];
+  }
+  if (property === 'font-weight') {
+    if (/^normal$/i.test(value) || /^var\(\s*--font-weight-/.test(value)) return [];
+    return NUMERIC_WEIGHT_RX.test(value) ? [{ check: 'font-weight-scale', detail: `font-weight: ${value}` }] : [];
+  }
+  // Atajo font: tamaño, /interlineado y peso literales que quedan tras quitar los var(...).
+  const literal = withoutVars(value);
+  const [beforeSlash, afterSlash] = literal.split('/');
+  const findings = [];
+  if (NUMERIC_LENGTH_RX.test(beforeSlash.replace(NUMERIC_WEIGHT_RX, ' '))) findings.push({ check: 'font-scale', detail: `font: ${value}` });
+  if (afterSlash !== undefined && /^\s*\d*\.?\d+/.test(afterSlash)) findings.push({ check: 'leading-scale', detail: `font: ${value}` });
+  if (NUMERIC_WEIGHT_RX.test(beforeSlash)) findings.push({ check: 'font-weight-scale', detail: `font: ${value}` });
+  return findings;
+}
+
+// Elemento realmente estilizado: el último compuesto del selector (".a-card .icon" → ".icon").
+function targetOf(selector) {
+  const parts = selector.trim().split(/\s*[\s>+~]\s*/);
+  return parts[parts.length - 1] ?? selector;
+}
+
+function normalizeShadow(value) {
+  return withoutImportant(value).replace(/\s+/g, '');
+}
+
 function main() {
   const args = parseArgs(process.argv);
   const rootDir = path.resolve(args.root);
@@ -324,6 +435,7 @@ function main() {
   }
 
   function report(file, check, line, msg, startLine = line) {
+    if (args.skipChecks.has(check)) return;
     if (isAllowed(file, check, line, startLine)) return;
     errors.push(`[${check}] ${relPath(file)}:${line} — ${msg}`);
   }
@@ -371,7 +483,19 @@ function main() {
     parsedCss.set(file, { cleaned, rules, forcedOutline });
   }
 
-  // 1, 2, 3, 4, 5 y 6 en CSS
+  // Valores de los tokens --shadow-* para detectar sombras duplicadas como literal (13).
+  const shadowTokens = new Map();
+  if (fs.existsSync(tokensFile)) {
+    const tokenCss = stripBlockCommentsPreserveLines(fs.readFileSync(tokensFile, 'utf8'));
+    for (const m of tokenCss.matchAll(/(--shadow-[\w-]+)\s*:\s*([^;]+);/g)) {
+      const normalized = normalizeShadow(m[2]);
+      if (!/^(?:none|var\()/i.test(normalized) && !shadowTokens.has(normalized)) shadowTokens.set(normalized, m[1]);
+    }
+  }
+  const flatAtRestValues = new Set(args.flatAtRestValues.map(normalizeShadow));
+  const ringLiteralRx = /(?:^|,)\s*0\s+0\s+0\s+\d*\.?\d+px\s+color-mix\(/;
+
+  // 1, 2, 3, 4, 5, 6 y 9 a 14 en CSS
   for (const file of cssFiles) {
     const { cleaned, rules, forcedOutline } = parsedCss.get(file);
     const isTokens = path.resolve(file) === tokensFile;
@@ -491,6 +615,40 @@ function main() {
           }
         }
       }
+
+      // 9, 10 y 11. Escalas cerradas de tamaño, interlineado y peso.
+      for (const decl of rule.body.matchAll(SCALE_DECLARATION_RX)) {
+        const line = lineAt(cleaned, rule.bodyStart + decl.index);
+        for (const finding of scaleFindings(decl[1].toLowerCase(), decl[2])) {
+          const token = { 'font-scale': '--text-*', 'leading-scale': '--leading-*', 'font-weight-scale': '--font-weight-*' }[finding.check];
+          report(file, finding.check, line, `"${finding.detail}" fuera de la escala; usa var(${token}).`);
+        }
+      }
+
+      for (const decl of rule.body.matchAll(/(?<![\w-])box-shadow\s*:\s*([^;]+)/g)) {
+        const value = withoutImportant(decl[1]);
+        const line = lineAt(cleaned, rule.bodyStart + decl.index);
+
+        // 12. Plano en reposo en tarjetas y superficies sin estado interactivo.
+        const cardAtRest = subs.some((sub) => args.cardSelectorRx.test(targetOf(sub)) && !INTERACTIVE_STATE_RX.test(sub));
+        if (cardAtRest && !forcedContext && !flatAtRestValues.has(normalizeShadow(value))) {
+          report(
+            file,
+            'flat-at-rest',
+            line,
+            `"${rule.selector}" declara sombra en reposo ("${value}"); solo :hover/:focus-visible/:active o estados de selección elevan.`
+          );
+        }
+
+        // 13 y 14. Sombras literales fuera del archivo de tokens.
+        if (isTokens || /^(?:none|var\()/i.test(value)) continue;
+        const token = shadowTokens.get(normalizeShadow(value));
+        if (token) {
+          report(file, 'shadow-literal', line, `Sombra que repite el valor de ${token}; usa var(${token}).`);
+        } else if (!isFocusRule && ringLiteralRx.test(value)) {
+          report(file, 'shadow-ring-literal', line, `Halo literal "${value}"; extráelo como token --shadow-ring-* en tokens.`);
+        }
+      }
     }
   }
 
@@ -498,6 +656,18 @@ function main() {
   for (const file of [...htmlFiles, ...prodCodeFiles]) {
     const raw = loadFile(file);
     const cleaned = file.endsWith('.html') ? stripHtmlCommentsPreserveLines(raw) : stripCodeCommentsPreserveLines(raw);
+
+    // 15. Toast con texto literal en código de producción.
+    if (!file.endsWith('.html')) {
+      for (const m of cleaned.matchAll(args.toastRx)) {
+        report(
+          file,
+          'no-toast-literal',
+          lineAt(cleaned, m.index),
+          'Toast con texto literal; pasa el texto ya traducido (p. ej. await translateLoaded(i18n, clave)).'
+        );
+      }
+    }
 
     for (const m of cleaned.matchAll(primRx)) {
       report(file, 'no-primitive-token', lineAt(cleaned, m.index), `Token primitivo "${m[1]}" usado en componente.`);
@@ -583,6 +753,7 @@ function main() {
       aliasedMarkers++;
       continue;
     }
+    if (args.skipChecks.has(entry.check)) continue;
     if (!entry.used) {
       errors.push(
         `[unused-allow-marker] ${entry.rel}:${entry.line} — El marcador design-system-allow para "${entry.check}" no suprimió ninguna violación; elimínalo.`

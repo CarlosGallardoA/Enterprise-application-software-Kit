@@ -1,0 +1,32 @@
+# Un secreto copiado a una capa queda en la imagen aunque otra capa lo borre: excluir antes de COPY.
+.git
+.gitignore
+.vs/
+.vscode/
+.idea/
+
+# Secretos y configuración local
+.env
+.env.*
+secrets/
+secrets.json
+*.local.json
+appsettings.*.local.json
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Artefactos de compilación y dependencias (se regeneran dentro de la imagen)
+**/bin/
+**/obj/
+**/node_modules/
+dist/
+coverage/
+
+# Pruebas, evidencia y documentación
+test-results/
+playwright-report/
+docs/
+*.md
+!README.md

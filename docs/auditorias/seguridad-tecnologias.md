@@ -44,6 +44,16 @@ No se ejecutó un escáner integral de dependencias, paquetes del SO o imágenes
 - Alcance de [npm audit](https://docs.npmjs.com/cli/v11/commands/npm-audit/) y [Composer audit](https://getcomposer.org/doc/03-cli.md#audit).
 - Ejemplo de CI actualizado con las identidades oficiales de [checkout v7.0.1](https://github.com/actions/checkout/commit/3d3c42e5aac5ba805825da76410c181273ba90b1) y [setup-node v7.1.0](https://github.com/actions/setup-node/commit/949feb2413d6458794dcd2491c4babbbce0c15c1). Revalidar avisos y runtime del runner antes de usarlas.
 
+## Actualización de la política (2026-11-24)
+
+Cambios documentales en `skills/security-and-auditability`, sin nueva verificación de runtimes ni escaneo de dependencias:
+
+- Las excepciones controladas pasan a registrarse en un archivo legible por máquina (p. ej. `tools/quality/dependency-exceptions.json`) que la compuerta de CI valida y rechaza si falta `owner` o `expiresOn`, si venció o si es huérfana. Este documento queda como evidencia de la aceptación, no como fuente de la compuerta.
+- Nueva regla de cadena de suministro (punto 11 de la política): fuentes de paquetes explícitas, versiones centralizadas, herramientas de CI fijadas por versión y SHA-256, escaneo de secretos, manifiesto SHA-256 del artefacto reverificado en el release y configuración por ambiente fuera del artefacto (IIS: en el servidor; Docker: variables de entorno o *secrets*).
+- `global.json` con `rollForward: latestPatch` y `allowPrerelease: false` para recibir parches de seguridad del SDK sin cambiar de banda.
+
+El kit no mantiene hoy excepciones activas; el estado `BLOQUEADO` de los runtimes observados el 2026-10-27 no se revalidó en esta actualización.
+
 ## Límites y reversión
 
 Las consultas son del día indicado, sin una base local de avisos de escáner. El código evaluado es el árbol de trabajo de esta tarea, sin nuevo commit. Las versiones fijas y SHA del ejemplo requieren revisión ante nuevos avisos. El uso seguro en aplicaciones existentes requiere implementar y validar su compuerta de CI y comprobar los procesos desplegados.

@@ -66,3 +66,12 @@ WHERE id = :messageId
 ```
 
 Si afecta `0` filas, el mensaje ya se procesó, ya estaba retenido o un worker lo tiene en curso: revisar su estado antes de repetir.
+
+## 5. Diagnóstico de bloqueos (claim o barridos que no avanzan)
+
+Si el worker reporta claims vacíos con backlog visible, o un barrido excede su duración habitual, revisar bloqueos antes de reciclar el proceso. Versionar en `scripts/` un script de **solo lectura** que liste las sesiones bloqueadas y bloqueadoras con su sentencia y espera:
+
+- **SQL Server**: consultar `sys.dm_exec_requests` (columna `blocking_session_id`), `sys.dm_exec_sessions` y `sys.dm_exec_sql_text`. Requiere solo el permiso `VIEW SERVER STATE` (o `VIEW DATABASE STATE` en Azure SQL), nunca `sysadmin`.
+- **PostgreSQL**: consultar `pg_stat_activity` junto con `pg_blocking_pids(pid)`.
+
+El script no ejecuta `KILL` ni `pg_terminate_backend`: terminar una sesión es una decisión humana documentada en el registro del incidente. El script está cubierto por una prueba de integración que lo ejecuta contra la base desechable para que no se rompa al cambiar el motor o la versión.

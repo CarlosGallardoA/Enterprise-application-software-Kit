@@ -17,7 +17,7 @@
 | `lockedUntilUtc` | Timestamp UTC nullable | Vencimiento del lease actual para recuperación ante caídas. |
 | `processedAtUtc` | Timestamp UTC nullable | Cuándo terminó con éxito. |
 | `deadLetteredAtUtc` | Timestamp UTC nullable | Cuándo agotó intentos o falló por esquema/tipo inválido. |
-| `lastError` | Texto(4000) nullable | **Solo el nombre del tipo de excepción/código**, sin stack ni datos sensibles. |
+| `lastError` | Texto(4000) nullable | **Solo el nombre del tipo de excepción/código**, sin stack ni datos sensibles. El store lo trunca a 4000 caracteres antes de escribir para que un mensaje largo no haga fallar la actualización del desenlace. |
 | `correlationId` | Texto(100) nullable | `traceId` / correlación de la petición origen. |
 | `causationId` | UUID nullable | Evento o comando causante. |
 | `actorUserId` | UUID nullable | Usuario autenticado que originó la operación. |

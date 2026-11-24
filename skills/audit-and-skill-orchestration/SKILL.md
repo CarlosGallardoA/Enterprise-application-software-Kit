@@ -40,6 +40,24 @@ Ver los flujos detallados de extremo a extremo en [companion-skills-matrix.md](.
 
 Antes de seleccionar tecnologías, remediar avisos o aprobar cualquier entrega, aplicar [technology-security-policy.md](../security-and-auditability/references/technology-security-policy.md). Cubrir versiones realmente ejecutadas de runtimes, dependencias directas/transitivas/de desarrollo, bibliotecas nativas, herramientas de CI, SO e imágenes. Bloquear ante vulnerabilidades conocidas aplicables de cualquier severidad, falta de soporte o evidencia incompleta. La coordinación con una auditoría especializada no sustituye esta comprobación ni autoriza omitirla.
 
+### Fijación de skills compañeras (`skills-lock.json`)
+
+Toda skill compañera instalada a nivel de proyecto se fija en un `skills-lock.json` versionado en la raíz del repositorio, con `source`, `sourceType`, `skillPath` y `computedHash` (SHA-256 del contenido instalado) por skill. Actualizar una skill compañera es un cambio revisable en Git: se regenera el hash, se revisa el diff de la skill y se anota en el changelog. Si el hash instalado no coincide con el del lock, detenerse y avisar antes de cargarla; nunca confiar en la versión "más reciente" de un repositorio externo sin pasar por el lock.
+
+```json
+{
+  "version": 1,
+  "skills": {
+    "<nombre-skill>": {
+      "source": "<owner>/<repo>",
+      "sourceType": "github",
+      "skillPath": "<ruta>/SKILL.md",
+      "computedHash": "<sha256>"
+    }
+  }
+}
+```
+
 ---
 
 ## 1. Protocolo obligatorio para Auditorías de Seguridad (`security-audit`)

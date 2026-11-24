@@ -46,6 +46,7 @@ La mayoría de los kits de instrucciones para IA se limitan a listas pasivas de 
 * **Validación *Fail-Fast* en Arranque y Triple Aislamiento en Disco**: Toda configuración crítica se valida al inicio (`ValidateOnStart`); el servidor mantiene separación física estricta entre carpeta de publicación (reemplazable en deploy), directorio documental persistente (`RootPath`) y anillo de llaves criptográficas/maestra `AES-256-GCM` resguardado fuera del almacenamiento documental.
 * **Ergonomía de Teclado, Precarga Diferida y Cero PII en Navegador**: Paleta de comandos global accesible (`Ctrl+K` / `Cmd+K`), precarga diferida filtrada por permisos y con concurrencia acotada, sin saturación de red, carga dinámica (`import()`) de SDKs pesados de autenticación federada y prohibición absoluta de almacenar PII en `localStorage`.
 * **Optimización de Contexto (*Progressive Disclosure*)**: Los agentes solo cargan en memoria el nombre y activadores de la skill. El archivo `SKILL.md` se lee únicamente bajo demanda, y las referencias profundas (`references/`) se consultan solo cuando la tarea técnica específica lo exige.
+* **Hospedaje Dual (Windows/IIS y Linux/Docker)**: Toda regla operativa trae variante para IIS (configuración residente en el servidor, `web.config`/`appsettings` que el release nunca sobrescribe) y para Docker (configuración por variables de entorno, `.env` o secretos montados, nunca dentro de la imagen; proxy inverso nginx/Traefik). El artefacto de la API nunca contiene configuración por ambiente ni secretos.
 * **Gobernanza Documental Estricta**: Modelo de entrada breve (`AGENTS.md`) con derivación a 5 subcarpetas obligatorias y 5 opcionales canónicas en `docs/` y bitácora inmutable (`docs/historial/changelog.md`) con entradas congeladas correlativas `### AAAA-MM-DD (N)`.
 
 ---
@@ -84,14 +85,14 @@ description: >-
 
 | # | Skill | Responsabilidad Principal | Activadores Clave | Artefactos Incluidos |
 |---|---|---|---|---|
-| 1 | [`enterprise-app-blueprint`](#1-enterprise-app-blueprint) | Estructura base de repositorio, gobernanza documental, contrato universal de errores, concurrencia optimista y paginación. | `nuevo proyecto`, `blueprint`, `AGENTS.md`, `contrato de errores`, `concurrencia` | Scripts: `scaffold-project-docs`, `check-docs-governance` + 5 plantillas |
-| 2 | [`hexagonal-vertical-slices`](#2-hexagonal-vertical-slices) | Arquitectura Hexagonal simétrica + Vertical Slices backend/frontend, raíces de composición en 3 niveles (global, shell, ruta diferida) protegiendo el code-splitting. | `arquitectura hexagonal`, `vertical slicing`, `ports and adapters`, `boundaries` | Script: `check-architecture-boundaries` + `boundaries.config.example.json` |
-| 3 | [`clean-code-and-standards`](#3-clean-code-and-standards) | Política de 0 advertencias, higiene de comentarios, reloj determinista, rendimiento real (precarga diferida por permisos, SDKs dinámicos, fuentes auto-hospedadas) y timeouts escalonados. | `clean code`, `revisión de código`, `código muerto`, `zero warnings`, `rendimiento` | Script: `audit-code-hygiene` + 2 guías de referencia |
-| 4 | [`layered-testing-strategy`](#4-layered-testing-strategy) | Ley Cero Anti-Tampering, pirámide de pruebas honesta (fakes manuales, fixtures completas, BD efímera, E2E). | `tests`, `testing`, `pruebas unitarias`, `fakes`, `disposable database` | Manual: `test-integrity-and-triage` + guías de fakes/fixtures |
+| 1 | [`enterprise-app-blueprint`](#1-enterprise-app-blueprint) | Estructura base de repositorio, gobernanza documental, toolchain centralizado, contrato universal de errores, concurrencia optimista y paginación acotada. | `nuevo proyecto`, `blueprint`, `AGENTS.md`, `contrato de errores`, `concurrencia`, `Directory.Build.props` | Scripts: `scaffold-project-docs`, `check-docs-governance` + plantillas de docs, arquitectura, despliegue y toolchain (.NET/Docker) |
+| 2 | [`hexagonal-vertical-slices`](#2-hexagonal-vertical-slices) | Arquitectura Hexagonal simétrica + Vertical Slices backend/frontend, capas como proyectos compilados, convenciones de nombrado y raíces de composición en 3 niveles. | `arquitectura hexagonal`, `vertical slicing`, `ports and adapters`, `boundaries`, `naming` | Script: `check-architecture-boundaries` (con autoprueba y fixtures) + `boundaries.config.example.json` |
+| 3 | [`clean-code-and-standards`](#3-clean-code-and-standards) | Política de 0 advertencias, strictness de toolchain (TS/ESLint/.NET), higiene de comentarios, reloj determinista, rendimiento medido (índices, barridos por lote, compresión, budgets) y timeouts escalonados. | `clean code`, `revisión de código`, `código muerto`, `zero warnings`, `rendimiento`, `tsconfig` | Script: `audit-code-hygiene` + 3 guías de referencia |
+| 4 | [`layered-testing-strategy`](#4-layered-testing-strategy) | Ley Cero Anti-Tampering, pirámide de pruebas honesta (fakes manuales, fixtures completas, BD efímera, conteo de SQL, pruebas de convención, E2E en dos niveles, cero reintentos). | `tests`, `testing`, `pruebas unitarias`, `fakes`, `disposable database`, `flaky` | Manual: `test-integrity-and-triage` + guías de fakes/fixtures y BD/E2E |
 | 5 | [`transactional-outbox-and-polling`](#5-transactional-outbox-and-polling) | Efectos secundarios durables (*at-least-once*), Outbox con leases, jobs de barrido SLA y sondeo disciplinado (`PollScheduler`). | `outbox`, `eventos durables`, `background jobs`, `SLA sweep`, `polling` | Especificaciones de Outbox, leases SQL y `PollScheduler` |
 | 6 | [`institutional-design-system-ux`](#6-institutional-design-system-ux) | Tokens semánticos de 2 niveles, paleta `Ctrl+K` accesible (cero PII en `localStorage`), WCAG 2.1 AA e i18n tipada con paridad exacta de claves. | `sistema de diseño`, `tokens`, `WCAG`, `accesibilidad`, `vistas operativas`, `i18n`, `Ctrl+K` | Scripts: `check-design-system`, `check-i18n-parity` + `DESIGN.template.md`, `tokens.template.css` |
-| 7 | [`security-and-auditability`](#7-security-and-auditability) | Sesiones revocables, permisos en BD anti-IDOR, cifrado documental AES-256-GCM con AAD, CSP estricto y redacción de PII. | `seguridad`, `autenticación`, `IDOR`, `cifrado`, `CSP`, `logs estructurados` | Especificación criptográfica, matrices IDOR y redacción de logs |
-| 8 | [`production-release-and-migrations`](#8-production-release-and-migrations) | `DbMigrator` CLI desacoplado de la API (3 identidades SQL), *Fail-Fast* (`ValidateOnStart`), triple aislamiento en disco, HTTP/2 con compresión y 10 compuertas CI/CD. | `despliegue`, `CI/CD`, `migraciones`, `DbMigrator`, `health checks`, `producción`, `HTTP/2` | Protocolo `DbMigrator`, checklist de despliegue y compuertas CI |
+| 7 | [`security-and-auditability`](#7-security-and-auditability) | Autorización denegada por defecto, sesiones revocables y rotadas, permisos en BD anti-IDOR, cifrado documental AES-256-GCM con AAD, cabeceras y CSP, integraciones salientes anti-SSRF, cadena de suministro y redacción de PII. | `seguridad`, `autenticación`, `IDOR`, `cifrado`, `CSP`, `rate limiting`, `SSRF`, `logs estructurados` | Especificación criptográfica, matrices IDOR, integraciones salientes y redacción de logs |
+| 8 | [`production-release-and-migrations`](#8-production-release-and-migrations) | `DbMigrator` CLI desacoplado de la API (modelo híbrido con script revisable), *Fail-Fast* (`ValidateOnStart`), artefactos sin configuración, hospedaje IIS o Docker, compresión en la aplicación y compuertas CI/CD. | `despliegue`, `CI/CD`, `migraciones`, `DbMigrator`, `health checks`, `producción`, `IIS`, `Docker` | Protocolo `DbMigrator`, checklist de despliegue IIS/Docker y compuertas CI |
 | 9 | [`audit-and-skill-orchestration`](#9-audit-and-skill-orchestration) | Coordinación sin solapamientos con skills de auditoría de seguridad (`security-audit`), consistencia UX y entrevista previa. | `auditoría`, `security audit`, `revisión UI/UX`, `orquestación`, `grill me` | Matriz de sinergia entre skills y flujos de remediación |
 
 ---
@@ -104,12 +105,15 @@ Establece los cimientos estructurales y normativos para que una aplicación crez
 * **Bitácora Inmutable**: Impone `docs/historial/changelog.md` con formato estricto `### AAAA-MM-DD (N)` donde cada registro documenta honestamente alcance, decisiones y verificación.
 * **Contrato Universal de Errores e i18n**: Respuestas controladas `{ reason: "STABLE_CODE", details? }` listas para traducción en cliente, también en `401`/`403`, y tipadas en cada endpoint. Las excepciones internas (500) ocultan detalles y retornan un `traceId` único correlacionado con logs del servidor.
 * **Concurrencia Optimista por Defecto**: Actualizaciones condicionadas a token de versión (`rowVersion`, `version` o `ETag`) en toda entidad con edición concurrente plausible (incluidos ajustes clave/valor y datos maestros administrados), respondiendo `412 Precondition Failed` ante colisiones.
-* **Paginación en Servidor y Baja Lógica**: Prohibición de endpoints que devuelvan colecciones no acotadas a memoria; baja lógica (`isActive = false`) y auditoría transversal en entidades operativas.
+* **Paginación en Servidor y Baja Lógica**: Prohibición de endpoints que devuelvan colecciones no acotadas a memoria (página por defecto 10, máximo 100, desempate por PK, conteos con tope permitidos); baja lógica (`isActive = false`) y auditoría transversal en entidades operativas, con campos sensibles redactados (`[REDACTED]`).
+* **Tope de Texto Simétrico**: Cada texto de entrada declara el mismo máximo en contrato, columna, entidad y `maxlength` del formulario, vigilado por una prueba de reflexión.
+* **Toolchain Centralizado**: Plantillas `global.json` (`rollForward: latestPatch`), `Directory.Build.props`, `Directory.Packages.props` (versiones centralizadas), `nuget.config` (`<clear/>`), `.gitattributes` (LF, CRLF solo en `.ps1`/`.cmd`/`.bat`) y `.dockerignore`, más plantillas de documentación de arquitectura, guía por stack y despliegue.
 
 #### 2. `hexagonal-vertical-slices`
 Resuelve la organización del código respondiendo simultáneamente a dos preguntas:
 * **Dirección de Dependencias (Hexagonal)**: El Dominio (`domain`) no depende de nada externo; la Aplicación (`application`) orquesta casos de uso y define puertos; la Infraestructura (`infrastructure`) implementa los adaptadores; la Presentación (`ui` / `api`) solo consume puertos de entrada.
 * **Propiedad de Negocio (Vertical Slices)**: Cada funcionalidad (`features/<nombre-feature>/`) encapsula sus casos de uso, contratos y adaptadores, erradicando carpetas horizontales genéricas y desordenadas.
+* **Capas Compiladas y Nombrado Uniforme**: Cada capa es un proyecto/paquete con grafo de referencias acíclico, un proyecto de pruebas por proyecto de código, registro DI explícito (sin mediadores, mapeadores automáticos ni escaneo por reflexión) y una tabla de nombres común para casos de uso, adaptadores, controladores, eventos y tokens.
 * **Composición por Alcance y Carga Diferida Real (sin anular el code-splitting)**:
   * *Nivel global (`app.config`)*: Exclusivamente fontanería transversal (router con precarga diferida por permisos, cliente HTTP e interceptores, error handler, i18n base y wiring mínimo de sesión para `authGuard`). **Prohibido** registrar casos de uso o adaptadores de features aquí, ya que arrastraría sus módulos al bundle inicial.
   * *Nivel shell autenticada (`''` en `app.routes`)*: Wiring compartido por 2 o más features activas tras iniciar sesión (notificaciones/heartbeat de cabecera, borrador compartido), sin duplicarlo ni subirlo a `app.config`.
@@ -125,6 +129,8 @@ Garantiza precisión y mantenibilidad con reglas no negociables:
   * *Interceptor de resiliencia sin reintentos de `TimeoutError`*: Un timeout bajo congestión indica encolamiento; reintentarlo agrava el cuello de botella. Solo reintentar fallos reales de transporte (`status === 0`) en lecturas idempotentes (`GET`).
   * *Consultas paralelas y campos computados*: Paralelización de lecturas de vista con `Promise.all` y formateos precalculados con señales/selectores memoizados (`computed()`) en lugar de invocar métodos por cada fila en plantillas.
   * *Carga bajo demanda (`import()` dinámico)* de SDKs federados pesados (~250+ kB) y **tipografías auto-hospedadas (`.woff2`)** para eliminar llamadas externas a Google Fonts en runtime y blindar la CSP.
+* **Strictness de Toolchain**: `tsconfig` estricto (`noUncheckedIndexedAccess`, `noImplicitOverride`, `noPropertyAccessFromIndexSignature`, etc.), ESLint en error (imports ascendentes, `consistent-type-imports`, preset de accesibilidad, prohibición de *bypass* del sanitizador) y `.editorconfig` C# con IDE0005/IDE0001/IDE0065.
+* **Rendimiento de Datos Medido**: Toda corrección se mide antes/después sobre BD desechable con volumen realista; índices filtrados y columnas calculadas para listados y barridos, predicados sargables, barridos por lote sin costo cuadrático del ORM, correlativos por upsert atómico, compresión JSON en la propia aplicación (excluyendo secretos por BREACH), cupos de CPU/descarga y presupuestos de bundle.
 * **Escalonamiento de Timeouts SQL y Reintentos Idempotentes**:
   * `CommandTimeout` de base de datos en API (`10 s`) por debajo del timeout HTTP del cliente (`15 s`) para trazas limpias; extendido en `DbMigrator` (`5 min`).
   * Transacciones manuales envueltas en `ExecutionStrategy` con idempotencia garantizada.
@@ -137,7 +143,10 @@ Implementa una suite de pruebas predecible y honesta:
   * *Casos de Uso*: Pruebas con fakes explícitos en memoria (escritos a mano con interfaces limpias), evitando librerías de mocking acopladas a la implementación interna.
   * *Componentes / UI*: Fixtures completas e inyección del motor real de traducciones (i18n), verificando accesibilidad e interactividad.
   * *Integración*: Ejecución contra instancias reales y efímeras de base de datos (descartables por suite), con limpieza transaccional obligatoria.
-  * *E2E*: Flujos críticos completos de usuario en navegador real con aislamiento y datos de prueba autolimpiables.
+  * *Integración con conteo de SQL*: Lectores paginados o con caché afirman el número exacto de comandos SQL (detecta N+1 y conteos de más).
+  * *Pruebas de convención por reflexión*: Invariantes transversales de la API (topes de texto, filtros de capacidad, contrato de falla) verificadas enumerando endpoints y contratos.
+  * *E2E en dos niveles*: UI/layout/accesibilidad con API simulada, y specs `-real` contra BD desechable (LocalDB en Windows, contenedor en Linux/Docker) para todo flujo que escribe datos; anchos 360/768/1280, Alto Contraste y movimiento reducido.
+  * *Cero reintentos*: `retries: 0`, sin pausas fijas, timeouts justificados y suites con estado compartido en serie.
 
 #### 5. `transactional-outbox-and-polling`
 Manejo disciplinado de la asincronía y el tiempo real sin introducir complejidad innecesaria:
@@ -156,14 +165,18 @@ Diseño de software empresarial centrado en la usabilidad, la ergonomía y la ac
   * *Paleta de comandos accesible*: Diálogo modal con `role="combobox"`, sincronización `aria-activedescendant` al navegar con flechas, ejecución con `Enter`, `Escape` y devolución limpia del foco. Búsquedas con debounce y cancelación inmediata de peticiones en vuelo.
   * *Higiene estricta de `localStorage` (Cero PII)*: En la lista de recientes, almacenar exclusivamente rutas o claves estáticas de navegación (`"nav.incidents"`). Prohibido almacenar expedientes, nombres o datos de usuarios; purga automática de entradas heredadas.
 * **Accesibilidad WCAG 2.1 AA**: Paridad de foco obligatoria (`:focus-visible` explícito; prohibido `outline: none` sin reemplazo visible). El anillo con `box-shadow` va acompañado de `outline: 2px solid transparent` para que sobreviva al Alto Contraste del sistema (`forced-colors`). Ratios de contraste documentados junto a cada token y comprobados con una herramienta nombrada, y navegación íntegra por teclado.
-* **Internacionalización y Paridad de Diccionarios**: Cero cadenas literales en plantillas HTML. Validación estática obligatoria de paridad exacta de claves, interpolación y traducciones no vacías en todos los idiomas, y de que toda clave usada en el código exista en los diccionarios.
+* **Accesibilidad Operativa**: Preset de lint de accesibilidad de plantillas, enlace de salto y gestión de foco, título de página traducido por ruta, validación de formularios con `aria-invalid`/`aria-describedby` solo con error y foco al primer campo inválido, y fechas con formato institucional sin `toISOString()` en valores locales.
+* **Internacionalización y Paridad de Diccionarios**: `<html lang>` sincronizado e idioma persistido aplicado antes del primer render. Cero cadenas literales en plantillas HTML. Validación estática obligatoria de paridad exacta de claves, interpolación y traducciones no vacías en todos los idiomas, y de que toda clave usada en el código exista en los diccionarios.
 
 #### 7. `security-and-auditability`
 Seguridad defensiva en profundidad desde las bases del código:
-* **Sesiones Revocables con Sello de Versión**: Cada solicitud valida el `security_version` del usuario en sesión/base de datos, permitiendo invalidación instantánea ante cambio de credenciales o cierre forzado.
+* **Autorización Denegada por Defecto**: Política de respaldo que exige sesión autenticada en todo endpoint; lo anónimo es excepción inventariada y probada. Protección del último administrador activo bajo bloqueo transaccional.
+* **Sesiones Revocables con Sello de Versión**: Cada solicitud valida el `security_version` del usuario en sesión/base de datos, permitiendo invalidación instantánea ante cambio de credenciales o cierre forzado. Rotación de sesión en cada login, cookies `__Host-` (`Secure`, `HttpOnly`, `SameSite=Lax`/`Strict`, `Path=/`), máximo absoluto de sesión y tickets/llaves persistidos fuera del proceso (sobreviven reciclados y contenedores).
+* **Identidad Federada y Rate Limiting**: Validación de emisor, audiencia, vigencia y *scope* del token del IdP, canjeado una vez por sesión de servidor; IP real solo desde proxies declarados; cuotas por operación costosa con `429` + `Retry-After` + `reason`.
+* **Integraciones Salientes y Cadena de Suministro**: Clientes HTTP con endpoint HTTPS validado al arrancar, timeout, tope de respuesta y sin redirecciones (anti-SSRF); identidad administrada o certificado en lugar de secretos; herramientas de CI fijadas con SHA-256 y excepciones de vulnerabilidades en archivo leído por la compuerta.
 * **Autorización en Base de Datos y Alcance Anti-IDOR**: Las consultas y mutaciones filtran obligatoriamente por la organización o tenencia del usuario (`tenantId`, `organizationId`) en la consulta SQL/ORM, impidiendo la manipulación de identificadores en la URL.
 * **Cifrado Documental en Repositorio**: Cifrado de documentos confidenciales mediante `AES-256-GCM` con Datos Asociados Autenticados (`AAD`), vinculando criptográficamente el archivo a la entidad que lo posee.
-* **Cabeceras de Endurecimiento**: CSP estricto con `nonces` o hashes, Trusted Types para neutralizar inyecciones DOM-XSS, cookies seguras `SameSite=Strict` y protección anti-CSRF por token sincronizado.
+* **Cabeceras de Endurecimiento**: CSP estricto con `nonces` o hashes (también en la API), Trusted Types para neutralizar inyecciones DOM-XSS, `nosniff`, `Referrer-Policy`, `Cache-Control: no-store` por defecto, CORS en lista blanca exacta, Swagger y endpoints de diagnóstico solo en Desarrollo, y protección anti-CSRF por token sincronizado.
 * **Bitácora Estructurada sin Fugas de Información**: Formato JSON estructurado con correlación mediante `traceId` y redacción automática obligatoria de contraseñas, tokens y datos sensibles (PII).
 
 #### 8. `production-release-and-migrations`
@@ -175,16 +188,18 @@ Entrega confiable y reproducible en servidores empresariales:
   2. *Directorio documental (`RootPath`)*: Carpeta externa persistente con ACL exclusivo para la identidad del proceso.
   3. *Llave maestra `AES-256-GCM` y anillo de claves*: Resguardados y respaldados **fuera del directorio documental** (guardar la llave junto a los archivos anula la protección ante copia de carpeta).
 * **Servidor Web y Red**:
-  * **HTTP/2 activo** sobre HTTPS/TLS 1.2+ (elimina el cuello de botella de 6 conexiones de HTTP/1.1) y **compresión estática/dinámica** (`br`/`gzip`) verificada.
+  * **HTTP/2 activo** sobre HTTPS/TLS 1.2+ (elimina el cuello de botella de 6 conexiones de HTTP/1.1), compresión estática de la SPA y **compresión JSON en la propia aplicación** (nunca compresión dinámica del servidor para la API); host endurecido (sin `Server`/`X-Powered-By`, topes de URL, query y encabezados) y TLS validado hacia la base de datos.
+* **Hospedaje IIS o Docker**: En IIS, `Preload Enabled`, reciclado periódico desactivado y configuración residente que el release no sobrescribe; en Docker, configuración por entorno/secretos, healthcheck de readiness y volúmenes para documentos y llaves. En ambos, servicio de calentamiento del ORM.
 * **Separación de Privilegios en Base de Datos**:
-  * La API de producción **nunca ejecuta DDL ni crea usuarios privilegiados al iniciar**. Las migraciones se gestionan mediante la herramienta CLI independiente `DbMigrator` con guardas escalonadas: migración directa solo en Desarrollo sobre loopback; `--target-database` coincidente en cualquier destino remoto; y en Producción, script revisado con manifiesto `SHA-256`, ticket de respaldo e identidad de migración separada de la del runtime.
-* **Compuertas de Calidad CI/CD**: Pipeline de 10 etapas automatizadas antes de autorizar el paso a producción.
+  * La API de producción **nunca ejecuta DDL ni crea usuarios privilegiados al iniciar**. Las migraciones se gestionan mediante la herramienta CLI independiente `DbMigrator` (modelo híbrido): migración directa solo en Desarrollo sobre loopback; `--target-database` coincidente en cualquier destino remoto; CI genera script idempotente + manifiesto `SHA-256` como artefacto de revisión que no despliega; el release aplica tras respaldo comprobado (`--reviewed-sha256`/`--backup-ticket` opcionales y recomendados). Incluye `--dry-run` de solo lectura, semillas que solo insertan y ventana de bajo uso para DDL bloqueante.
+* **Compuertas de Calidad CI/CD**: Pipeline de compuertas automatizadas (secretos, dependencias, build, pruebas, manifiesto de artefactos reverificado en el release) antes de autorizar el paso a producción; número de build visible en la UI.
 
 #### 9. `audit-and-skill-orchestration`
 Establece la coordinación armónica y sin conflictos entre las skills del kit y herramientas externas especializadas:
 * **Auditoría de Seguridad Adversarial**: Este kit define los controles constructivos; la auditoría ofensiva y de penetración delega en `security-audit` (modo solo lectura, clasificación `confirmed` / `needs_validation` y artefactos fuera del repo).
 * **Consistencia Visual y Ergonomía UI**: Coordina con `design-consistency-auditor`, `ui-ux-pro-max` e `impeccable` respetando la jerarquía donde el archivo `DESIGN.md` del proyecto es la autoridad suprema.
 * **Interrogatorio de Diseño y Documentación Viva**: Integración fluida con `grilling` para resolver decisiones críticas antes de codificar y con `context7-mcp` para verificar firmas exactas de versiones instaladas de librerías.
+* **Skills Compañeras Fijadas**: `skills-lock.json` versionado con fuente y hash SHA-256 de cada skill compañera; un hash distinto detiene la carga.
 
 ---
 
@@ -210,9 +225,9 @@ El kit provee **6 herramientas automáticas de validación** desarrolladas en No
 Antes de ejecutarlas, verificar el runtime contra los avisos oficiales vigentes. [.node-version](.node-version) fija Node.js `24.22.1`, parche publicado para los avisos de octubre de 2026 y verificado el 2026-10-27; debe revisarse ante nuevos avisos, junto con cualquier biblioteca integrada y los runtimes usados por las acciones de CI. El archivo no actualiza automáticamente el Node instalado ni certifica versiones futuras. Los 6 validadores comprueban calidad estructural; cada proyecto debe implementar además la compuerta obligatoria de seguridad descrita en la política.
 
 ### 1. `scaffold-project-docs.mjs`
-Inicializa el gobierno documental del proyecto generando `AGENTS.md`, `DESIGN.md`, `.editorconfig`, `.gitignore`, las subcarpetas de `docs/`, el informe inicial `docs/auditorias/seguridad-tecnologias.md` y la primera entrada en `changelog.md`:
+Inicializa el gobierno documental del proyecto generando `AGENTS.md`, `DESIGN.md`, `.editorconfig`, `.gitattributes`, `.gitignore`, las subcarpetas de `docs/` con plantillas de arquitectura, guía y despliegue, el informe inicial `docs/auditorias/seguridad-tecnologias.md` y la primera entrada en `changelog.md`. `--dotnet` agrega `global.json`, `Directory.Build.props`, `Directory.Packages.props` y `nuget.config`; `--docker` agrega `.dockerignore`:
 ```bash
-node skills/enterprise-app-blueprint/scripts/scaffold-project-docs.mjs --target . --name "NombreProyecto" [--force]
+node skills/enterprise-app-blueprint/scripts/scaffold-project-docs.mjs --target . --name "NombreProyecto" [--dotnet] [--docker] [--force]
 ```
 
 ### 2. `check-docs-governance.mjs`
@@ -226,7 +241,10 @@ Validador agnóstico de fronteras arquitectónicas (Hexagonal + Vertical Slices)
 ```bash
 node skills/hexagonal-vertical-slices/scripts/check-architecture-boundaries.mjs --config ./boundaries.config.json [--root .]
 ```
-*Soporta análisis estático de código en:* TypeScript, JavaScript, Python, Go, C#, Java, Kotlin y Rust.
+*Soporta análisis estático de código en:* TypeScript, JavaScript, Python, Go, C#, Java, Kotlin y Rust. Inspecciona también las pruebas (exentas solo de las reglas por capa), prohíbe paquetes externos por capa (`forbiddenPackagesByLayer`), detecta nombres calificados en línea en C# e imports duplicados. Autoprueba con fixtures:
+```bash
+node --test skills/hexagonal-vertical-slices/scripts/check-architecture-boundaries.test.mjs
+```
 
 ### 4. `audit-code-hygiene.mjs`
 Audita la base de código detectando narrativa conversacional en comentarios, supresiones evasivas sin justificar, uso directo de relojes del sistema y pruebas silenciadas (`skip` / `@Disabled`):
@@ -239,6 +257,7 @@ Valida el cumplimiento estricto del sistema de diseño:
 * Detecta colores hexadecimales literales fuera del archivo de tokens.
 * Bloquea el consumo directo de tokens primitivos (`--brand-*`).
 * Prohíbe `transition: all`.
+* Verifica escalas tipográficas (`font-scale`, `leading-scale`, `font-weight-scale`), tarjetas planas en reposo (`flat-at-rest`), sombras y halos literales (`shadow-literal`, `shadow-ring-literal`) y toasts con texto literal; cada check se puede omitir con `--skip-checks`.
 * Exige paridad de foco accesible por regla y selector (prohíbe `outline: none` sin indicador `:focus-visible`) y, con `--require-forced-colors-focus`, el contorno transparente para Alto Contraste.
 * Detecta cadenas de texto sin traducir en plantillas UI, incluidos `aria-label`, `title`, `placeholder` y `alt`, sin confundir expresiones del framework con texto.
 * Acepta marcadores de excepción del proyecto mediante alias (`--marker-alias`) y prefijos de primitivos configurables (`--primitive-prefix`).
@@ -416,14 +435,14 @@ My_Project_Skills/
     │   ├── SKILL.md
     │   ├── agents/openai.yaml
     │   ├── references/                         # Contratos de API, errores, gobierno documental
-    │   ├── resources/                          # Plantillas AGENTS, changelog, reglas, editorconfig
+    │   ├── resources/                          # Plantillas AGENTS, changelog, reglas, arquitectura, despliegue, toolchain .NET/Docker
     │   └── scripts/                            # scaffold-project-docs.mjs, check-docs-governance.mjs
     ├── hexagonal-vertical-slices/              # Arquitectura Hexagonal + Vertical Slices simétrica
     │   ├── SKILL.md
     │   ├── agents/openai.yaml
     │   ├── references/                         # Anatomía de slices backend y frontend (wiring 3 niveles)
     │   ├── resources/                          # boundaries.config.example.json
-    │   └── scripts/                            # check-architecture-boundaries.mjs
+    │   └── scripts/                            # check-architecture-boundaries.mjs + autoprueba y fixtures
     ├── clean-code-and-standards/               # 0 advertencias, higiene, reloj inyectado, rendimiento y timeouts
     │   ├── SKILL.md
     │   ├── agents/openai.yaml
@@ -446,7 +465,7 @@ My_Project_Skills/
     ├── security-and-auditability/              # Sesiones revocables, anti-IDOR, AES-256-GCM, CSP, PII
     │   ├── SKILL.md
     │   ├── agents/openai.yaml
-    │   └── references/                         # Especificaciones criptográficas, matrices de permisos
+    │   └── references/                         # Especificaciones criptográficas, matrices de permisos, integraciones salientes
     ├── production-release-and-migrations/      # DbMigrator desacoplado, ValidateOnStart, triple aislamiento, CI/CD
     │   ├── SKILL.md
     │   ├── agents/openai.yaml

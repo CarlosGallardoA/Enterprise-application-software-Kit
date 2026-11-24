@@ -86,3 +86,44 @@ cases = [
 for case in cases:
   test("${case.name} delega argumentos exactos, retorna respuesta intacta y propaga fallos")
 ```
+
+---
+
+## 5. Reloj Determinista
+
+Toda regla que depende del tiempo (vencimientos, SLA, ventanas de reintento, «hoy» en un formulario, expiración de sesión) se prueba con un reloj controlado por la prueba. Ningún código de producción llama a `DateTime.UtcNow`, `Date.now()` o `new Date()` sin argumentos.
+
+### Servidor (.NET y equivalentes)
+
+- Inyectar `TimeProvider` (registrado como `TimeProvider.System` en la raíz de composición) en casos de uso, adaptadores y servicios en segundo plano.
+- En pruebas usar `FakeTimeProvider` (`Microsoft.Extensions.TimeProvider.Testing`): fijar el instante inicial con `SetUtcNow(...)` y avanzar con `Advance(TimeSpan)` para cruzar un umbral exacto (vence a las 24 h: probar `23:59:59` y `24:00:00`).
+- Los temporizadores (`PeriodicTimer`, `Task.Delay`) que reciben el `TimeProvider` también avanzan con `Advance`, así que un worker se prueba sin esperar tiempo real.
+- En otros stacks: un puerto `Clock` con `now()` y un `FakeClock` mutable de 5 líneas.
+
+### Cliente (SPA)
+
+- Exponer un token de inyección `CLOCK` (`{ now: () => Date }`) con proveedor por defecto `() => new Date()` en `core/time/`.
+- Componentes, pipes y validadores que calculan «hoy», `max` de un `<input type="date">` o rangos relativos leen `CLOCK`; la prueba lo sustituye por una fecha fija.
+- Fijar siempre la hora además de la fecha: los errores de zona horaria aparecen cerca de medianoche (probar `23:30` hora local con zona UTC−4).
+
+---
+
+## 6. Pruebas de Convención por Reflexión
+
+Algunas invariantes no pertenecen a un endpoint, sino a **todos**: un endpoint nuevo puede olvidarlas y ninguna prueba unitaria lo nota. Se cubren con una prueba que enumera por reflexión los controladores, acciones o contratos del ensamblado y falla con la lista exacta de incumplimientos.
+
+Invariantes típicas:
+
+| Invariante | Qué enumera | Falla si… |
+| --- | --- | --- |
+| Tope de texto simétrico | Cada propiedad `string` de cada contrato de entrada. | No declara `[StringLength(N)]`/`[MaxLength(N)]`, o `N` difiere del `HasMaxLength(N)` de la columna a la que se mapea, o el mapa contrato→columna tiene entradas huérfanas. |
+| Capacidad de carga | Cada acción que acepta `multipart/form-data` o `IFormFile`. | No declara el filtro de límite/reserva de memoria y el `[RequestSizeLimit]` propio. |
+| Validación antes del caso de uso | Cada acción con cuerpo. | Un cuerpo inválido llega a ejecutar el caso de uso (verificar con un proxy de casos de uso que falla si se invoca). |
+| Contrato de falla | Cada acción. | Declara respuestas de error que no son `ProblemDetails` con `reason`. |
+| Endpoints anónimos | Cada acción con `[AllowAnonymous]`. | No figura en la lista blanca versionada. |
+
+Reglas:
+
+- El mensaje de fallo lista **todos** los incumplimientos (tipo, propiedad, valor esperado y real), no solo el primero.
+- Una excepción legítima se declara en una lista explícita dentro de la prueba con su motivo; nunca se filtra por nombre con comodines.
+- En el cliente, el mismo principio aplica a plantillas: un campo de texto declara `maxlength` igual al tope del contrato que alimenta.

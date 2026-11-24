@@ -11,6 +11,9 @@ Reglas vinculantes de proceso y gobierno para todo trabajo en el repositorio, in
 
 - Validar identidad, vigencia de sesión, permisos y alcance organizacional siempre en el servidor; nunca confiar en controles exclusivos del cliente ni en claims obsoletos de cookies/tokens para permisos revocables.
 - Mantener cadenas de conexión, claves criptográficas, contraseñas y tokens fuera del control de versiones. Nunca hardcodear credenciales reales ni siquiera en scripts temporales de prueba.
+- La configuración por ambiente vive en el host, nunca en el artefacto: en Windows + IIS, `appsettings.{Ambiente}.json`/`web.config`/variables del App Pool creados una vez en el servidor y nunca sobrescritos por el release; en Linux + Docker, variables de entorno, `env_file` fuera del repositorio o *Docker secrets*, nunca dentro de la imagen.
+- Las integraciones de servicio a servicio se autentican con **identidad administrada** o **certificado**. Un *client secret* solo se admite como transición, con fecha de retiro registrada en `docs/operacion/deployment.md`.
+- La conexión a la base de datos va cifrada con validación de certificado; `TrustServerCertificate=true` (o equivalente) solo se admite en desarrollo local.
 - Antes de seleccionar, instalar, actualizar o ejecutar tecnologías y de cerrar una entrega, cumplir [seguridad-de-tecnologias.md](./seguridad-de-tecnologias.md): usar versiones soportadas y parcheadas verificadas contra avisos oficiales vigentes; cubrir runtimes, dependencias directas/transitivas/de desarrollo, bibliotecas nativas, CI, SO e imágenes. Bloquear ante vulnerabilidades conocidas aplicables de cualquier severidad o evidencia incompleta, sin silenciar errores ni aceptar mitigaciones como corrección.
 
 ## Estilo de trabajo

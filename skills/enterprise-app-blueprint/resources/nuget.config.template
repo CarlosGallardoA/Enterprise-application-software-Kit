@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <!-- Ignora fuentes heredadas de la máquina o del agente de CI. -->
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+  </packageSources>
+  <!--
+    Con más de una fuente (p. ej. un feed interno), asignar cada prefijo a su fuente:
+  <packageSourceMapping>
+    <packageSource key="nuget.org">
+      <package pattern="*" />
+    </packageSource>
+    <packageSource key="interno">
+      <package pattern="MiOrganizacion.*" />
+    </packageSource>
+  </packageSourceMapping>
+  -->
+</configuration>

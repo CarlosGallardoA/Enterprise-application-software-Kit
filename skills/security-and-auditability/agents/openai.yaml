@@ -1,6 +1,6 @@
 interface:
   display_name: "Security & Auditability"
   short_description: "Versiones verificadas, bloqueo de CVE y seguridad defensiva del stack"
-  default_prompt: "Verifica soporte y avisos vigentes de runtimes, dependencias, bibliotecas nativas e imágenes; bloquea cualquier vulnerabilidad aplicable o evidencia incompleta. Aplica además autorización, sesiones, cifrado documental y trazabilidad segura."
+  default_prompt: "Verifica soporte y avisos vigentes de runtimes, dependencias, bibliotecas nativas e imágenes; bloquea cualquier vulnerabilidad aplicable o evidencia incompleta. Aplica además autorización denegada por defecto, sesiones y cookies endurecidas, proxies de confianza, cabeceras HTTP, integraciones salientes, cifrado documental y trazabilidad segura, tanto en IIS como en Docker."
 policy:
   allow_implicit_invocation: true

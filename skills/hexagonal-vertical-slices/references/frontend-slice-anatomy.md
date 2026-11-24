@@ -29,6 +29,9 @@ src/app/
 4. **Agrupación de casos de uso triviales**:
    - Por defecto, un archivo `<accion>.use-case` por clase.
    - Se permite agrupar en `<entidad>.use-cases` (plural) **únicamente** cuando todas las clases delegan en 1 línea al mismo método de un único puerto, sobre la misma entidad, sin validación, transformación ni estado. En cuanto una requiere lógica propia, pasa a su propio archivo con su prueba unitaria dedicada.
+   - El documento de arquitectura del frontend lista cada archivo `*.use-cases` vigente junto con el comando que regenera esa lista (p. ej. `git ls-files 'src/app/features/**/*.use-cases.ts'`).
+   - **Subcarpetas por flujo**: solo cuando una feature tiene varios flujos de usuario independientes (p. ej. `wizard/`, `review/`, `admin/`), cada capa puede subdividirse por flujo (`ui/wizard/`, `application/wizard/`). Una feature con un solo flujo mantiene las capas planas.
+   - Nombres de archivos, tokens y clases según [naming-conventions.md](./naming-conventions.md).
 5. **Sufijos semánticos para funciones/helpers puros**:
    - `-rule`: regla de negocio pura en `domain/` (entra valor, sale veredicto).
    - `-policy`: política de flujo en `application/` (qué se permite o qué paso sigue según el estado del agregado).

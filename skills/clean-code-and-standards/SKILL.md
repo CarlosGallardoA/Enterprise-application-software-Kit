@@ -29,6 +29,7 @@ Antes de ejecutar herramientas o cerrar el cambio, cumplir [la política de segu
 - Prohibido usar directivas para silenciar advertencias reales de tipos o nulabilidad (`@ts-ignore`, `#pragma warning disable`, `type: ignore`, `#[allow(...)]` sin justificación arquitectónica). Resolver siempre la causa raíz.
 - **Supresión de linter admitida**: una supresión puntual de la línea siguiente (`eslint-disable-next-line <regla> -- <motivo>`) con el motivo en la misma línea solo se acepta cuando la regla es propia del proyecto (regla custom o selector configurado, p. ej. `no-restricted-syntax`) y el motivo es arquitectónico, no de conveniencia (en SICRE: validación síncrona de entrada del usuario cuando el scope de traducciones ya cargó). Nunca para reglas de tipos, nulabilidad o seguridad, ni a nivel de archivo.
 - Prohibido usar operadores de aserción no nula (`!`) o casteos forzados para callar al compilador al desempaquetar resultados de casos de uso o entradas HTTP; usar coincidencia de patrones o guardas explícitas.
+- **Línea base obligatoria del compilador y del linter**: banderas estrictas de TypeScript (`strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `noPropertyAccessFromIndexSignature`...), reglas ESLint en error (imports relativos ascendentes, `consistent-type-imports`, prohibición de APIs que desactivan la sanitización, accesibilidad de plantillas), `Directory.Build.props` con nulabilidad y advertencias como errores, y `.editorconfig` con severidad `error` para imports. Ver [toolchain-strictness.md](./references/toolchain-strictness.md).
 
 ### 2. Higiene quirúrgica de comentarios
 - **Qué SÍ comentar**: únicamente el **porqué técnico no obvio** que el código no puede expresar por sí mismo (restricciones de protocolo o navegador, condiciones de carrera, invariantes contra IDOR, límites de librerías externas).
@@ -50,11 +51,14 @@ Antes de ejecutar herramientas o cerrar el cambio, cumplir [la política de segu
 
 ### 5. Separación lectura/escritura y consultas acotadas
 - **Lecturas sin seguimiento de cambios (`read-only / no-tracking`)**: toda consulta cuyo resultado no se va a mutar y persistir desactiva el seguimiento del ORM. No reutilizar un método de escritura con tracking para servir consultas de lectura.
-- **Trabajos periódicos siempre acotados**: ningún job en segundo plano carga colecciones sin cota (`SELECT *` abierto). Usar lote fijo (`LIMIT / TAKE`) o paginación por cursor (`keyset pagination` ordenada por `(fecha, id)`), y delegar agregaciones (`COUNT`, `GROUP BY`) al motor de base de datos en lugar de contar en memoria.
+- **Trabajos periódicos siempre acotados**: ningún job en segundo plano carga colecciones sin cota (`SELECT *` abierto). Usar lote fijo (`LIMIT / TAKE`) o paginación por cursor (`keyset pagination` ordenada por `(fecha, id)`), y delegar agregaciones (`COUNT`, `GROUP BY`) al motor de base de datos en lugar de contar en memoria. Un barrido precarga los relacionados del lote en una consulta, hace un `SaveChanges` por lote y limpia el rastreador de cambios.
+- **Predicados sargables, conteos acotados e índices por consulta**: nunca aplicar funciones sobre una columna indexada; contadores de sondeo con tope (`99+`); orden paginado con desempate por PK; cada listado y barrido con su índice (columna calculada persistida, filtro igual al predicado, `INCLUDE`).
+- **Medir antes y después**: ninguna optimización se cierra sin cifras sobre una base con volumen realista.
 - Ver [performance-and-concurrency-guardrails.md](./references/performance-and-concurrency-guardrails.md).
 
 ### 6. Trabajo intensivo de CPU y memoria fuera de transacciones
 - Compresión/redimensionado de imágenes, renderizado pesado o validación estructural de archivos corren **antes** de abrir una transacción de base de datos o adquirir un bloqueo exclusivo, protegidos por un semáforo global de concurrencia y un presupuesto acotado de memoria (`503 Service Unavailable` + `Retry-After` cuando se satura).
+- Cupos separados y nombrados por recurso: render de PDF (`núcleos / 2`, espera ≤ 10 s), subidas y descargas con su propio presupuesto de bytes; cada saturación responde con un `reason` propio. Ver §3 de las [guardas](./references/performance-and-concurrency-guardrails.md).
 
 ### 7. Manejo explícito de errores en procesos de fondo
 - En workers o bucles periódicos, capturar fallos por iteración registrando el error estructurado e informando que se reintentará en el siguiente ciclo, **dejando pasar siempre las señales de cancelación del host**. Jamás escribir bloques `catch` vacíos que traguen fallas en silencio.
@@ -71,5 +75,5 @@ Antes de ejecutar herramientas o cerrar el cambio, cumplir [la política de segu
    ```bash
    node <ruta-skill>/scripts/audit-code-hygiene.mjs --root . --scan src,tests
    ```
-2. Ejecutar el formateador oficial y el linter estático configurados en el proyecto.
+2. Ejecutar el formateador oficial y el linter estático configurados en el proyecto, y confirmar que la configuración cumple la [línea base de rigor](./references/toolchain-strictness.md).
 3. Inspeccionar el `git diff` línea por línea buscando: imports sobrantes, comentarios narrativos o redundantes, relojes directos, consultas abiertas sin paginar, bloques muertos y **cualquier cambio sospechoso en aserciones de pruebas existentes** (confirmando que ninguna prueba fue suavizada para forzar el verde).

@@ -1,0 +1,28 @@
+# Normaliza finales de línea para que Windows/IIS, Linux/Docker y CI vean los mismos bytes.
+* text=auto eol=lf
+
+# Scripts de Windows: CRLF.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Scripts de Linux y de imágenes Docker: siempre LF.
+*.sh text eol=lf
+Dockerfile text eol=lf
+
+# Binarios: sin conversión ni diff de texto.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.zip binary
+*.pfx binary
+*.p12 binary
+*.snk binary

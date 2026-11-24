@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 // Generador de gobierno documental para aplicaciones nuevas (Node.js soportado y parcheado, cero dependencias).
-// Crea AGENTS.md, DESIGN.md, .editorconfig, .gitignore y las 10 subcarpetas canónicas de docs/
-// (5 obligatorias para check-docs-governance.mjs + 5 opcionales) con sus documentos base enlazados,
-// la política de tecnologías, el informe inicial de seguridad de tecnologías (estado BLOQUEADO hasta
-// la primera corrida real) y la primera entrada numerada de docs/historial/changelog.md.
+// Crea AGENTS.md, DESIGN.md, .editorconfig, .gitattributes, .gitignore y las 10 subcarpetas canónicas
+// de docs/ (5 obligatorias para check-docs-governance.mjs + 5 opcionales) con sus documentos base
+// enlazados (arquitectura con secciones obligatorias, guías con checklist de PR y despliegue por perfil
+// de hospedaje), la política de tecnologías, el informe inicial de seguridad de tecnologías (estado
+// BLOQUEADO hasta la primera corrida real) y la primera entrada numerada de docs/historial/changelog.md.
+// --dotnet agrega global.json, Directory.Build.props, Directory.Packages.props y nuget.config;
+// --docker agrega .dockerignore.
 //
 // Uso:
-//   node scaffold-project-docs.mjs --target <ruta-proyecto> --name "MiSistema" [--force]
+//   node scaffold-project-docs.mjs --target <ruta-proyecto> --name "MiSistema" [--dotnet] [--docker] [--force]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,13 +21,15 @@ const designTemplatePath = path.resolve(__dirname, '../../institutional-design-s
 const technologySecurityPolicyPath = path.resolve(__dirname, '../../security-and-auditability/references/technology-security-policy.md');
 
 function parseArgs(argv) {
-  const args = { target: process.cwd(), name: 'MiProyecto', force: false };
+  const args = { target: process.cwd(), name: 'MiProyecto', force: false, dotnet: false, docker: false };
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--target' && argv[i + 1]) args.target = argv[++i];
     else if (argv[i] === '--name' && argv[i + 1]) args.name = argv[++i];
     else if (argv[i] === '--force') args.force = true;
+    else if (argv[i] === '--dotnet') args.dotnet = true;
+    else if (argv[i] === '--docker') args.docker = true;
     else if (argv[i] === '--help' || argv[i] === '-h') {
-      console.log('Uso: node scaffold-project-docs.mjs --target <dir> --name "NombreProyecto" [--force]');
+      console.log('Uso: node scaffold-project-docs.mjs --target <dir> --name "NombreProyecto" [--dotnet] [--docker] [--force]');
       process.exit(0);
     }
   }
@@ -51,10 +56,11 @@ function writeIfMissing(destPath, content, force) {
   return true;
 }
 
-function renderTemplate(raw, name, todayIso) {
+function renderTemplate(raw, name, todayIso, stack = '') {
   return raw
     .replaceAll('<NOMBRE_PROYECTO>', name)
-    .replaceAll('<FECHA_HOY>', todayIso);
+    .replaceAll('<FECHA_HOY>', todayIso)
+    .replaceAll('<STACK>', stack);
 }
 
 function main() {
@@ -95,8 +101,27 @@ function main() {
     'docs/historial/changelog.md',
     renderTemplate(fs.readFileSync(path.join(resourcesDir, 'changelog.template.md'), 'utf8'), args.name, todayIso)
   );
-  emit('.editorconfig', fs.readFileSync(path.join(resourcesDir, '.editorconfig.template'), 'utf8'));
-  emit('.gitignore', fs.readFileSync(path.join(resourcesDir, '.gitignore.template'), 'utf8'));
+  const readResource = (file) => fs.readFileSync(path.join(resourcesDir, file), 'utf8');
+
+  emit('.editorconfig', readResource('.editorconfig.template'));
+  emit('.gitattributes', readResource('.gitattributes.template'));
+  emit('.gitignore', readResource('.gitignore.template'));
+
+  if (args.dotnet) {
+    emit('global.json', readResource('global.json.template'));
+    emit('Directory.Build.props', readResource('Directory.Build.props.template'));
+    emit('Directory.Packages.props', readResource('Directory.Packages.props.template'));
+    emit('nuget.config', readResource('nuget.config.template'));
+  }
+  if (args.docker) {
+    emit('.dockerignore', readResource('.dockerignore.template'));
+  }
+
+  emit('docs/arquitectura/backend-architecture.md', renderTemplate(readResource('backend-architecture.template.md'), args.name, todayIso));
+  emit('docs/arquitectura/frontend-architecture.md', renderTemplate(readResource('frontend-architecture.template.md'), args.name, todayIso));
+  emit('docs/guias/backend-guide.md', renderTemplate(readResource('stack-guide.template.md'), args.name, todayIso, 'Backend'));
+  emit('docs/guias/frontend-guide.md', renderTemplate(readResource('stack-guide.template.md'), args.name, todayIso, 'Frontend'));
+  emit('docs/operacion/deployment.md', renderTemplate(readResource('deployment.template.md'), args.name, todayIso));
 
   if (fs.existsSync(designTemplatePath)) {
     emit('DESIGN.md', renderTemplate(fs.readFileSync(designTemplatePath, 'utf8'), args.name, todayIso));
@@ -107,12 +132,9 @@ function main() {
   // Documentos base enlazados desde AGENTS.md para arrancar sin enlaces rotos
   const starterDocs = {
     'docs/arquitectura/principios-generales.md': `# Principios Generales de Arquitectura\n\nRegla obligatoria antes de tocar código: identificar el vertical slice y la capa exacta (\`domain\` → \`application\` → \`infrastructure\` / \`ui\`) manteniendo dependencias estrictamente hacia adentro.\n`,
-    'docs/arquitectura/backend-architecture.md': `# Arquitectura Backend\n\nCapas \`Domain\`, \`Application\`, \`Infrastructure\` y \`Api\` organizadas por vertical slices.\n`,
-    'docs/arquitectura/frontend-architecture.md': `# Arquitectura Frontend\n\nFeatures autónomas con \`domain\`, \`application\`, \`infrastructure\` y \`ui\` sobre \`core/\` como shared kernel mínimo.\n`,
     'docs/arquitectura/realtime-and-background-jobs.md': `# Eventos Durables (Outbox), Jobs Periódicos y Sondeo\n\nEspecificación de entrega confiable \`at-least-once\`, workers acotados y \`PollScheduler\` en cliente.\n`,
-    'docs/estandares/estandares-backend.md': `# Estándares de Implementación Backend\n\nPolítica de \`0 warnings\`, higiene de comentarios, reloj inyectado y consultas de solo lectura sin tracking.\n`,
-    'docs/estandares/estandares-frontend.md': `# Estándares de Implementación Frontend\n\nComponentes declarativos sin lógica de negocio, tokens semánticos CSS, accesibilidad WCAG AA e i18n por scopes.\n`,
-    'docs/operacion/deployment.md': `# Despliegue y Migraciones\n\nProcedimiento de compilación, artefactos de CI/CD, \`DbMigrator\` separado y verificación post-despliegue.\n`,
+    'docs/estandares/estandares-backend.md': `# Estándares de Implementación Backend\n\nPolítica de \`0 warnings\`, higiene de comentarios, reloj inyectado y consultas de solo lectura sin tracking.\n\n## Sintaxis moderna\n\nConstrucciones obligatorias de la versión del lenguaje adoptada y sus excepciones conocidas.\n`,
+    'docs/estandares/estandares-frontend.md': `# Estándares de Implementación Frontend\n\nComponentes declarativos sin lógica de negocio, tokens semánticos CSS, accesibilidad WCAG AA e i18n por scopes.\n\n## Sintaxis moderna\n\nConstrucciones obligatorias de la versión del lenguaje y del framework adoptados y sus excepciones conocidas.\n`,
     'docs/operacion/logs.md': `# Logs Estructurados y Diagnóstico\n\nCorrelación por \`traceId\`, formato estructurado libre de PII y reporte acotado de errores de cliente.\n`
   };
 

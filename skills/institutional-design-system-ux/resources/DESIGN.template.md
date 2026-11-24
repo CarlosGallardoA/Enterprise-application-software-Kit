@@ -228,7 +228,11 @@ Todo lo que sube en `:hover` aterriza en `:active` (`translateY(0)`). `@media (p
 
 ### Inputs / Fields
 
-Borde `1px` `--color-border`, `--radius-control`, altura mínima de `44 px`. Foco: borde primario + `--focus-ring-field` + contorno transparente. Error: borde `--color-danger` y mensaje asociado por `aria-describedby`. Los selectores buscables usan el componente compartido, no `<select>` nativo.
+Borde `1px` `--color-border`, `--radius-control`, altura mínima de `44 px`. Foco: borde primario + `--focus-ring-field` + contorno transparente. Error: borde `--color-danger`, `aria-invalid="true"` y mensaje asociado por `aria-describedby`, ambos atributos presentes solo mientras hay error (directiva única). El error aparece tras 500 ms sin escribir o al salir del campo; al enviar inválido se enfoca el primer campo con error. `maxlength` igual al tope del contrato del backend. Teléfonos y formatos fijos con máscara compartida (`<FORMATO_TELEFONO>`). Los selectores buscables usan el componente compartido, no `<select>` nativo.
+
+### Fechas y horas
+
+Formato institucional único `<FORMATO_FECHA_HORA>` mediante un pipe/helper compartido. Zona horaria oficial `<ZONA_HORARIA_IANA>` para bordes de filtros; «hoy» y el `max` de campos de fecha en hora local del reloj inyectado, nunca con `toISOString()`.
 
 ### Cabecera de página
 
@@ -236,7 +240,7 @@ Eyebrow en pantallas de primer nivel; migas de pan en vistas alcanzadas desde ot
 
 ### Navegación
 
-Pestañas con patrón ARIA tablist completo (flechas, Home/End, `tabindex` rotatorio); navegación por rutas como `<nav>`, no como tablist. Menú lateral móvil como diálogo con foco retenido y retorno al disparador.
+Pestañas con patrón ARIA tablist completo (flechas, Home/End, `tabindex` rotatorio); navegación por rutas como `<nav>`, no como tablist. Menú lateral móvil como diálogo con foco retenido y retorno al disparador; al navegar desde él, el foco pasa a `<main>`. Enlace de salto traducido a `<main id="main-content" tabindex="-1">` al inicio del shell. Cada ruta declara `titleKey` y el título del documento es `<Título> · <NOMBRE_PROYECTO>`, reactivo al idioma; `<html lang>` sigue al idioma activo.
 
 ### Alertas inline
 
@@ -275,7 +279,8 @@ Regla: **clase CSS** cuando lo que se repite es apariencia; **componente** cuand
 
 - **Cabecera de página**: eyebrow en primer nivel; migas de pan en vistas hijas (nunca ambos, nunca ninguno).
 - **Expedientes y formularios**: secciones numeradas coherentes, resumen contextual previo a ancho completo, controles Sí/No segmentados de `44 px` y rejillas adaptadas al contenedor (`auto-fit, minmax(...)`).
-- **Listados y tablas**: filtro uniforme, transformación automática a tarjetas apiladas bajo `48rem` sin ocultar columnas ni truncar nombres, estados de carga/error/vacío por el componente compartido y bitácoras en línea de tiempo vertical estándar.
+- **Listados y tablas**: filtro uniforme, transformación automática a tarjetas apiladas bajo `48rem` sin ocultar columnas ni truncar nombres (el orden sigue disponible en móvil antes de las tarjetas), estados de carga/error/vacío por el componente compartido y bitácoras en línea de tiempo vertical estándar.
+- **Rediseños**: un cambio visual conserva exactamente los campos, acciones, permisos y métricas existentes; se compara con capturas antes/después sobre la misma matriz de datos.
 - **Retroalimentación**: indicador inline de guardado (`idle`/`dirty`/`saving`/`saved`), toast único de «Guardar y avanzar» tras completar la navegación y modales con bloqueo `aria-busy` y preservación de datos ante error.
 
 ## Do's and Don'ts
@@ -299,6 +304,8 @@ Regla: **clase CSS** cuando lo que se repite es apariencia; **componente** cuand
 
 ## Verificación
 
-- `check-design-system.mjs` (o el equivalente del proyecto) dentro de `lint`: hex, primitivos, `transition: all`, foco y textos literales.
-- `check-i18n-parity.mjs` con `--check-usage` (o una prueba de resolución de claves) para paridad y claves existentes.
+- `check-design-system.mjs` (o el equivalente del proyecto) dentro de `lint`: hex, primitivos, `transition: all`, escalas de fuente/interlineado/peso, plano en reposo, sombras y halos literales, foco, toasts y textos literales.
+- `check-i18n-parity.mjs` con `--check-usage` dentro de `lint`, más una prueba de resolución para las claves compuestas en tiempo de ejecución.
+- Preset de accesibilidad de plantillas del framework (`<PRESET_A11Y>`) en modo error dentro de `lint`.
+- Specs E2E de 360/768/1280 px, Alto Contraste (`forcedColors: 'active'`) y movimiento reducido para cada vista nueva.
 - `<HERRAMIENTA>` para las razones de contraste documentadas.

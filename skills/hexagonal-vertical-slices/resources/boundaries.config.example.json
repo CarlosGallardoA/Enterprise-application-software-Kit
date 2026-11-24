@@ -2,10 +2,6 @@
   "scanRoots": ["src"],
   "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".cs", ".java", ".kt", ".rs"],
   "ignorePatterns": [
-    "\\.spec\\.",
-    "\\.test\\.",
-    "_test\\.go$",
-    "Tests?\\.cs$",
     "/node_modules/",
     "/dist/",
     "/build/",
@@ -15,6 +11,31 @@
     "/\\.angular/",
     "/coverage/"
   ],
+  "testFilePatterns": ["\\.spec\\.", "\\.test\\.", "_test\\.go$", "Tests?\\.cs$", "/e2e/"],
+  "forbiddenPackagesByLayer": {
+    "domain": [
+      "^@angular/",
+      "^react(?:-dom)?$",
+      "^vue$",
+      "^rxjs",
+      "^Microsoft\\.EntityFrameworkCore",
+      "^Microsoft\\.AspNetCore",
+      "^System\\.Net\\.Http",
+      "^Microsoft\\.Extensions\\.(?:Http|Caching|Configuration)",
+      "^(?:sqlalchemy|django|fastapi|flask)",
+      "^(?:javax|jakarta)\\.persistence",
+      "^org\\.springframework"
+    ],
+    "application": [
+      "^@angular/(?:common/http|router|forms|platform-browser)",
+      "^Microsoft\\.EntityFrameworkCore",
+      "^Microsoft\\.AspNetCore",
+      "^System\\.Net\\.Http",
+      "^(?:sqlalchemy|django|fastapi|flask)",
+      "^(?:javax|jakarta)\\.persistence",
+      "^org\\.springframework\\.(?:web|data|jdbc)"
+    ]
+  },
   "tsconfigFiles": ["tsconfig.json"],
   "featuresSegment": "/features/",
   "coreSegments": ["/core/", "/common/"],
@@ -25,5 +46,7 @@
   "featureImportPrefixes": ["@features/", "@app/features/", "features/", "features."],
   "compositionImportPrefixes": ["@app/composition/", "composition/", "composition."],
   "forbidDeepRelativeImports": true,
-  "forbidLateImportsInJsTs": true
+  "forbidLateImportsInJsTs": true,
+  "forbidDuplicateImportsInJsTs": true,
+  "inspectCSharpQualifiedNames": true
 }

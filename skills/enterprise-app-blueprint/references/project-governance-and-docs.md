@@ -31,6 +31,17 @@ Un proyecto empresarial degrada rápido cuando las reglas se dispersan en conver
    - **Actualizar antes que duplicar**: antes de crear un `.md` nuevo, verificar si ya existe uno del mismo tema en `docs/` y actualizarlo. Si ningún directorio encaja, crear una subcarpeta descriptiva en español. Los archivos estructurales de raíz (`AGENTS.md`, `DESIGN.md`, `README.md`) permanecen siempre en la raíz.
    - **`PRODUCT.md` (opcional, raíz)**: contexto de producto para agentes de diseño/UX (plataforma, usuarios, tono, objetivos); también permanece en la raíz junto a `DESIGN.md`, sin duplicar reglas de `docs/`.
 
+3. **Documentos de arquitectura con secciones obligatorias**: `docs/arquitectura/backend-architecture.md` y `frontend-architecture.md` nacen de las plantillas [backend-architecture.template.md](../resources/backend-architecture.template.md) y [frontend-architecture.template.md](../resources/frontend-architecture.template.md), y conservan estas secciones aunque alguna diga "no aplica todavía":
+   - Modelo mental en un párrafo y tabla de proyectos/paquetes con su responsabilidad y sus referencias permitidas.
+   - Anatomía de un vertical slice y tabla **"¿Dónde va cada cosa?"** (validación, autorización, mapeo, consultas, eventos, jobs).
+   - Ejemplo de punta a punta de un caso de uso real del proyecto.
+   - Raíces de composición, decoradores/cachés y registro de dependencias.
+   - Convenciones de nombrado, build y toolchain, estrategia de pruebas y contrato de errores.
+   - **Registros vivos** (ver regla de proceso 3) y anti-patrones prohibidos.
+   - `docs/guias/<stack>-guide.md` (desde [stack-guide.template.md](../resources/stack-guide.template.md)) contiene la receta paso a paso para agregar un caso de uso y la **checklist de PR** que todo cambio debe cumplir.
+
+4. **`docs/operacion/deployment.md` declara el perfil de hospedaje** de cada ambiente (Windows + IIS o Linux + Docker) desde [deployment.template.md](../resources/deployment.template.md), con dónde vive la configuración, cómo se reverifica el artefacto y el runbook de diagnóstico.
+
 ## Reglas de proceso y flujo de trabajo
 
 ### 1. Estándar estricto de `docs/historial/changelog.md` (congelado, numerado y con verificación honesta)
@@ -45,7 +56,17 @@ Un proyecto empresarial degrada rápido cuando las reglas se dispersan en conver
 ### 2. Catálogo vivo de endpoints HTTP
 - Todo endpoint nuevo o modificado se documenta en la misma tarea dentro del catálogo ejecutable del repositorio (archivo `.http`, colección declarativa o especificación verificada), detallando método, ruta, autenticación requerida, protección CSRF/antiforgery, cuerpo de entrada y códigos de respuesta esperados (`200/201/204` y errores tipados).
 
-### 3. Seguridad estricta sobre Git y evidencias locales
+### 3. Registros vivos de excepciones y formas no default
+- Toda forma, variante o excepción que se aparta del default arquitectónico (una feature que usa la Forma 2 de slice, una entidad exceptuada de `AuditableEntity`, un endpoint anónimo, un pin de dependencia transitiva, un archivo generado) figura **por nombre** en un registro dentro del documento de arquitectura que la gobierna, con el motivo y, si el registro se genera, el **comando exacto que lo regenera**. Lo que no está en el registro sigue el default.
+
+### 4. Los documentos enlazan la configuración, no la copian
+- No copiar valores de configuración (versión de SDK, `rollForward`, número de proyectos, límites, puertos, versiones de paquetes) dentro de la prosa de `docs/`: enlazar al archivo fuente (`global.json`, `Directory.Build.props`, `Directory.Packages.props`, `appsettings.json`, `angular.json`). Un valor copiado se desincroniza en el siguiente cambio y el documento termina contradiciendo al código.
+- Cuando un número es imprescindible para explicar una regla (p. ej. el tope de 100 elementos por página), el documento nombra la constante o el archivo que lo define.
+
+### 5. Sintaxis moderna por stack
+- Cada `docs/estandares/estandares-<stack>.md` incluye una sección **"Sintaxis moderna"** que fija las construcciones obligatorias de la versión del lenguaje adoptada (p. ej. en C#: *namespaces* de archivo, constructores primarios, expresiones de colección, *pattern matching*, `required`/`init`; en TypeScript: `satisfies`, `import type`, *optional chaining*) y sus excepciones conocidas (p. ej. árboles de expresión de LINQ que no admiten ciertas construcciones). Así el código nuevo no mezcla estilos de distintas versiones.
+
+### 6. Seguridad estricta sobre Git y evidencias locales
 - **Operaciones mutantes de Git**: un agente nunca ejecuta `commit`, `push`, `merge`, `rebase`, `reset` ni borrado/creación de ramas por iniciativa propia; deja los cambios verificados en el árbol de trabajo y solo usa comandos de lectura (`status`, `diff`, `log`) salvo instrucción explícita para esa tarea puntual.
 - **Capturas antes/después y artefactos de agentes fuera de Git**: las capturas de pantalla, galerías HTML, volcados de salida, borradores y archivos intermedios que genera un agente se guardan exclusivamente en rutas ignoradas por Git (`docs/auditorias/evidencias/`, `test-results/` o una carpeta dedicada como `.agent-artifacts/`, todas en `.gitignore`). En el repositorio solo se versionan los informes `.md` y las pruebas automatizadas que las generan.
 - **Cero secretos en el árbol de trabajo**: jamás escribir credenciales reales, tokens o llaves en ningún archivo dentro del repositorio, ni siquiera en scripts temporales (una vez en el historial de Git, un borrado posterior no revoca la exposición).

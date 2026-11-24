@@ -1,0 +1,20 @@
+<Project>
+  <!-- Propiedades comunes a todos los proyectos. Los .csproj no las repiten. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <!--
+      Solo códigos justificados. NU1507: varias fuentes sin packageSourceMapping (quitar si se
+      configura mapping). NU1900: fallo al consultar la auditoría NuGet; la compuerta de seguridad
+      de tecnologías bloquea por su cuenta, así que el build no debe fallar por la red.
+    -->
+    <WarningsNotAsErrors>NU1507;NU1900</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>

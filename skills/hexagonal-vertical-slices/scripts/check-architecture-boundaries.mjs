@@ -6,6 +6,10 @@
  * Resuelve imports relativos y alias de `tsconfig` (`compilerOptions.paths`) a rutas reales antes de
  * clasificar feature y capa, así un alias propio (`@claims/*`) o un `../../otra-feature/...` no escapa.
  *
+ * Las pruebas (`testFilePatterns`) se inspeccionan: solo quedan exentas de las reglas de aislamiento por
+ * capa y de paquetes prohibidos, nunca de cross-feature, core-to-feature, composición ni imports.
+ * En C# también se analizan los nombres calificados en línea (`Acme.Infrastructure.Foo` sin `using`).
+ *
  * Uso:
  *   node check-architecture-boundaries.mjs --config ./boundaries.config.json [--root .]
  */
@@ -32,10 +36,6 @@ const DEFAULT_CONFIG = {
   scanRoots: ['src'],
   extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.cs', '.java', '.kt', '.rs'],
   ignorePatterns: [
-    '\\.spec\\.',
-    '\\.test\\.',
-    '_test\\.go$',
-    'Tests?\\.cs$',
     '/node_modules/',
     '/dist/',
     '/build/',
@@ -45,6 +45,10 @@ const DEFAULT_CONFIG = {
     '/\\.angular/',
     '/coverage/'
   ],
+  // Pruebas: exentas solo de las reglas por capa (*-isolation, ui-to-adapter, forbidden-package).
+  testFilePatterns: ['\\.spec\\.', '\\.test\\.', '_test\\.go$', 'Tests?\\.cs$', '/e2e/'],
+  // Paquetes externos prohibidos por capa: { "<capa>": ["<regex sobre el import>"] }.
+  forbiddenPackagesByLayer: {},
   tsconfigFiles: ['tsconfig.json'],
   featuresSegment: '/features/',
   coreSegments: ['/core/', '/common/'],
@@ -57,7 +61,9 @@ const DEFAULT_CONFIG = {
   featureImportPrefixes: ['@features/', '@app/features/', 'features/', 'features.'],
   compositionImportPrefixes: ['@app/composition/', 'composition/', 'composition.'],
   forbidDeepRelativeImports: true,
-  forbidLateImportsInJsTs: true
+  forbidLateImportsInJsTs: true,
+  forbidDuplicateImportsInJsTs: true,
+  inspectCSharpQualifiedNames: true
 };
 
 const JS_TS_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
@@ -158,6 +164,46 @@ function extractImports(rawContent, ext) {
   }
 
   return { cleaned, imports: results };
+}
+
+// Nombres calificados en línea (`Acme.Infrastructure.Persistence.EfRepo`, `Microsoft.EntityFrameworkCore.DbContext`):
+// un `using` ausente no debe ocultar una dependencia prohibida. Requiere 3+ segmentos en PascalCase para no
+// confundirse con accesos a miembros (`Status.Active`, `this.Foo.Bar`).
+function extractCSharpQualifiedNames(cleaned) {
+  const results = [];
+  const lines = cleaned.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*(?:global\s+)?(?:using|namespace)\b/.test(lines[i])) continue;
+    const code = lines[i]
+      .replace(/[@$]*"(?:\\.|""|[^"\\])*"/g, '""')
+      .replace(/'(?:\\.|[^'\\])'/g, "''")
+      .replace(/\/\/.*$/, '');
+    const seen = new Set();
+    for (const m of code.matchAll(/(?<![\w.])(?:global::)?([A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*){2,})/g)) {
+      if (seen.has(m[1])) continue;
+      seen.add(m[1]);
+      results.push({ specifier: m[1], line: i + 1, kind: 'fqn', index: 0 });
+    }
+  }
+  return results;
+}
+
+// Dos `import` del mismo módulo y del mismo tipo (valor o `import type`) se agrupan en una sola declaración.
+function checkDuplicateJsTsImports(cleaned, ext, relFile, errors) {
+  if (!JS_TS_EXTENSIONS.includes(ext)) return;
+  const seen = new Set();
+  const rx = /(^|[;\n])[ \t]*import\s+(type\s+)?(?!\()[^;'"]*?\bfrom\s*['"]([^'"]+)['"]/g;
+  for (const m of cleaned.matchAll(rx)) {
+    const kind = m[2] ? 'tipo' : 'valor';
+    const key = `${kind}:${m[3]}`;
+    if (seen.has(key)) {
+      const line = lineNumberAt(cleaned, m.index + m[1].length);
+      errors.push(
+        `[duplicate-import] ${relFile}:${line} — "${m[3]}" se importa más de una vez como ${kind}; agrupa en una sola declaración.`
+      );
+    }
+    seen.add(key);
+  }
 }
 
 // tsconfig admite comentarios y comas finales (JSONC); se limpian respetando el contenido de las cadenas.
@@ -350,6 +396,13 @@ function main() {
   }
   const cfg = { ...DEFAULT_CONFIG, ...userCfg };
   const ignoreRegexes = cfg.ignorePatterns.map((p) => new RegExp(p));
+  const testRegexes = (cfg.testFilePatterns || []).map((p) => new RegExp(p));
+  const forbiddenByLayer = Object.fromEntries(
+    Object.entries(cfg.forbiddenPackagesByLayer || {}).map(([layer, patterns]) => [
+      layer.toLowerCase(),
+      patterns.map((p) => new RegExp(p))
+    ])
+  );
   const allowedUiInfraRx = new RegExp(cfg.allowedUiInfrastructureRegex);
   const allowedCrossFeatureRx = cfg.allowedCrossFeatureTargetRegex
     ? new RegExp(cfg.allowedCrossFeatureTargetRegex, 'i')
@@ -369,14 +422,22 @@ function main() {
     const ext = path.extname(file);
     const raw = fs.readFileSync(file, 'utf8');
     const { cleaned, imports } = extractImports(raw, ext);
+    if (ext === '.cs' && cfg.inspectCSharpQualifiedNames) {
+      imports.push(...extractCSharpQualifiedNames(cleaned));
+    }
     const ctx = detectFileContext(posixFile, cfg);
+    const isTest = testRegexes.some((rx) => rx.test(posixFile));
 
     if (cfg.forbidLateImportsInJsTs) {
       checkLateJsTsImports(cleaned, ext, relFile, errors);
     }
+    if (cfg.forbidDuplicateImportsInJsTs) {
+      checkDuplicateJsTsImports(cleaned, ext, relFile, errors);
+    }
 
     for (const imp of imports) {
       const spec = imp.specifier;
+      const how = imp.kind === 'fqn' ? ' (nombre calificado en línea)' : '';
 
       if (
         cfg.forbidDeepRelativeImports &&
@@ -402,7 +463,13 @@ function main() {
 
       if (ctx.inCore && target.feature) {
         errors.push(
-          `[core-to-feature] ${relFile}:${imp.line} — El kernel compartido (core/common) no puede importar la feature "${target.feature}" ("${spec}").`
+          `[core-to-feature] ${relFile}:${imp.line} — El kernel compartido (core/common) no puede importar la feature "${target.feature}" ("${spec}")${how}.`
+        );
+      }
+
+      if (!isTest && !resolved && ctx.layer && (forbiddenByLayer[ctx.layer] || []).some((rx) => rx.test(spec))) {
+        errors.push(
+          `[forbidden-package] ${relFile}:${imp.line} — La capa ${ctx.layer} no puede depender del paquete "${spec}"${how}.`
         );
       }
 
@@ -413,22 +480,22 @@ function main() {
         !(allowedCrossFeatureRx && allowedCrossFeatureRx.test(target.remainder))
       ) {
         errors.push(
-          `[cross-feature] ${relFile}:${imp.line} — La feature "${ctx.feature}" no puede importar otra feature "${target.feature}" ("${spec}").`
+          `[cross-feature] ${relFile}:${imp.line} — La feature "${ctx.feature}" no puede importar otra feature "${target.feature}" ("${spec}")${how}.`
         );
       }
 
       const sameScopeOrLayerCheck = !target.feature || target.feature === ctx.feature;
-      if (ctx.layer && target.layer && sameScopeOrLayerCheck) {
+      if (!isTest && ctx.layer && target.layer && sameScopeOrLayerCheck) {
         if (ctx.layer === 'domain' && target.layer !== 'domain') {
           errors.push(
-            `[domain-isolation] ${relFile}:${imp.line} — La capa domain no puede depender de "${target.layer}" ("${spec}").`
+            `[domain-isolation] ${relFile}:${imp.line} — La capa domain no puede depender de "${target.layer}" ("${spec}")${how}.`
           );
         } else if (
           ctx.layer === 'application' &&
           ['infrastructure', 'ui', 'api'].includes(target.layer)
         ) {
           errors.push(
-            `[application-isolation] ${relFile}:${imp.line} — La capa application no puede depender de "${target.layer}" ("${spec}").`
+            `[application-isolation] ${relFile}:${imp.line} — La capa application no puede depender de "${target.layer}" ("${spec}")${how}.`
           );
         } else if (
           ctx.layer === 'ui' &&

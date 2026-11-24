@@ -1,6 +1,7 @@
 root = true
 
-# UTF-8 sin BOM y LF en todo el repositorio; solo los scripts de cmd.exe exigen CRLF.
+# UTF-8 sin BOM y LF en todo el repositorio (Windows/IIS y Linux/Docker producen los mismos bytes);
+# solo los scripts de cmd.exe y PowerShell usan CRLF. Mantener coherente con .gitattributes y Prettier.
 [*]
 charset = utf-8
 end_of_line = lf
@@ -22,5 +23,17 @@ indent_size = 4
 indent_style = tab
 indent_size = 4
 
-[*.{cmd,bat}]
+[*.{cmd,bat,ps1}]
 end_of_line = crlf
+
+# Estilo C# que el build hace cumplir (requiere EnforceCodeStyleInBuild=true en Directory.Build.props).
+[*.cs]
+# Usings sin uso.
+dotnet_diagnostic.IDE0005.severity = error
+# Nombres simplificables: prohíbe nombres totalmente calificados en línea.
+dotnet_diagnostic.IDE0001.severity = error
+# Usings fuera del namespace.
+csharp_using_directive_placement = outside_namespace:error
+dotnet_diagnostic.IDE0065.severity = error
+csharp_style_namespace_declarations = file_scoped:error
+dotnet_sort_system_directives_first = true

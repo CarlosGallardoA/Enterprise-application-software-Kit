@@ -1,0 +1,20 @@
+<Project>
+  <!-- Versiones centralizadas: los .csproj usan <PackageReference Include="..." /> sin Version. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Dependencias directas">
+    <!-- <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="x.y.z" /> -->
+  </ItemGroup>
+
+  <ItemGroup Label="Pins transitivos">
+    <!--
+      Cada pin documenta el aviso que corrige y cuándo retirarlo. Ejemplo:
+      Corrige <GHSA/CVE> en <paquete> traído por <dependencia directa>.
+      Retirar cuando <dependencia directa> referencie >= x.y.z.
+      <PackageVersion Include="System.Text.Json" Version="x.y.z" />
+    -->
+  </ItemGroup>
+</Project>

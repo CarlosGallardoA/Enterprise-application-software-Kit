@@ -42,7 +42,9 @@ Encadenar manejadores de excepción pequeños; cada uno reconoce una sola situac
 | Petición mal formada o que excede el límite de tamaño, detectada por el servidor HTTP | Conservar el estado ya decidido (`400` / `413`), nunca `500` |
 | Cliente que abortó la petición mientras corría un comando de base de datos (el driver a veces lo reporta como error SQL y no como cancelación) | Solo si la petición ya estaba abortada: `499`, log de nivel depuración; cualquier otra falla de BD sigue su curso |
 
-Ejemplo de referencia: `src/Sicre.Api/ExceptionHandling/` en SICRE (`ConcurrencyExceptionHandler`, `UniqueConstraintConflictExceptionHandler`, `BadRequestExceptionHandler`, `ClientAbortedRequestExceptionHandler`), registrados una sola vez como `IExceptionHandler` para que ningún caso de uso necesite `try/catch` propio.
+Ejemplo de referencia en ASP.NET Core: una carpeta `ExceptionHandling/` en el proyecto `Api` con `ConcurrencyExceptionHandler`, `UniqueConstraintConflictExceptionHandler`, `BadRequestExceptionHandler` y `ClientAbortedRequestExceptionHandler`, registrados una sola vez como `IExceptionHandler` para que ningún caso de uso necesite `try/catch` propio.
+
+**Excepción acotada a "la API no conoce el ORM"**: estos manejadores (y los *health checks* de base de datos) son el único código de la capa `api` autorizado a referenciar tipos de excepción del ORM o del driver. La excepción se declara por nombre en `docs/arquitectura/backend-architecture.md`; ningún controlador ni filtro la extiende.
 
 ---
 
@@ -66,6 +68,10 @@ Toda tabla nueva con mantenimiento (CRUD) hereda o compone `AuditableEntity`:
 - `createdAtUtc`, `createdByUserId`, `updatedAtUtc`, `updatedByUserId`.
 - El gancho central de persistencia (interceptor/unidad de trabajo al confirmar cambios) genera automáticamente las entradas de diff de campos en la bitácora de auditoría (`AuditLogEntries`), sin código repetitivo en cada caso de uso.
 
+### Campos sensibles: cambio registrado, valor redactado
+- Clasificar los campos sensibles del modelo (salud, notas clínicas, identificadores personales, datos financieros, secretos, hashes de contraseña o de tokens). El diff de la bitácora registra **que** el campo cambió, quién y cuándo, pero escribe `[REDACTED]` en los valores anterior y nuevo: copiar el valor a la bitácora duplicaría el dato sensible en una tabla con otro control de acceso y otra retención.
+- La lista de propiedades redactadas es **viva y central** (un único conjunto en el constructor del diff, no atributos dispersos) y una prueba de integración verifica que cada campo clasificado sale como `[REDACTED]` y que un campo no sensible conserva sus valores.
+
 ### Las 5 excepciones legítimas (cualquier otra tabla lleva `AuditableEntity`)
 Antes de crear una entidad sin `AuditableEntity`, verificar que pertenece estrictamente a una de estas 5 categorías:
 
@@ -79,14 +85,27 @@ La arquitectura del backend mantiene la **lista viva por nombre** de cada entida
 
 ---
 
-## 4. Paginación y normalización de búsquedas
+## 4. Paginación, conteos, largo de texto y normalización de búsquedas
 
 1. **Paginación obligatoria en el servidor**:
-   - Todo listado que crece con la operación (expedientes, transacciones, usuarios, bitácora, documentos) recibe `page` y `pageSize` acotado (con tope máximo en servidor) y devuelve `{ items, page, pageSize, totalCount }`.
+   - Todo listado que crece con la operación (expedientes, transacciones, usuarios, bitácora, documentos) recibe `page` y `pageSize` y devuelve `{ items, page, pageSize, totalCount }`.
+   - **Normalización única**: un solo tipo `PageRequest` (o función `normalize`) aplica los valores por defecto y el tope en el servidor: `page < 1` pasa a `1`, `pageSize` por defecto `10` y máximo `100` (clamp, nunca error). Ningún endpoint repite esta lógica.
+   - **Orden determinista**: todo orden paginado termina con un desempate por la clave primaria (`ORDER BY <criterio>, Id`). Sin desempate, filas con el mismo valor de orden saltan o se repiten entre páginas.
    - En el cliente, ejecutar una nueva búsqueda o cambiar filtros **siempre reinicia `page = 1`** para no dejar al usuario atrapado en una página vacía fuera de rango.
    - **Única excepción**: selectores/opciones de catálogos administrados pequeños (decenas de registros activos).
 
-2. **Normalización simétrica de texto en escritura y filtros**:
+2. **`totalCount` exacto solo cuando es barato; conteos acotados en el resto**:
+   - **Contadores de sondeo** (campana de notificaciones, insignias de pendientes): contar con tope (`TOP(n)`/`LIMIT n` + `COUNT`, p. ej. `n = 100`) y mostrar `99+`. Nunca un `COUNT(*)` completo en cada sondeo.
+   - **Tablas append-only grandes** (bitácora, historial): cuando el total supera un umbral (p. ej. `10 000` filas), reutilizar el total por combinación de filtros durante una ventana corta (p. ej. 60 s) en vez de recontar en cada página.
+   - Documentar en el contrato del endpoint cuando `totalCount` puede ser aproximado o acotado; el cliente lo presenta como tal ("más de 10 000", "99+").
+
+3. **Largo máximo simétrico de todo texto de entrada**:
+   - Todo campo de texto libre de un contrato de entrada declara el **mismo máximo** en cuatro lugares: el contrato HTTP (p. ej. `[StringLength(N)]`), la columna (`HasMaxLength(N)`), la guarda de la entidad de dominio y el `maxlength` del formulario del cliente.
+   - El servidor responde `400` con `reason` antes de ejecutar el caso de uso; un texto sin tope nunca llega a la base para fallar como `500` por truncamiento.
+   - Una prueba por reflexión recorre todos los contratos de entrada y falla si un `string` no declara tope o si su tope difiere del de la columna mapeada.
+   - Los correos y valores que terminan en cabeceras de mensajería (asunto, destinatario) se rechazan si contienen `CR`/`LF`, para evitar inyección de cabeceras.
+
+4. **Normalización simétrica de texto en escritura y filtros**:
    - Aplicar la misma función `normalizeOptional(text)` (`trim()`, retornando `null` si queda vacío) tanto al guardar entidades como antes de armar predicados de búsqueda. Pasar cadenas crudas con espacios accidentales al borde rompe coincidencias exactas y por prefijo.
    - **Identificadores y códigos** (número de expediente, póliza, código de sede): buscar por **prefijo** (`STARTS WITH` / `LIKE 'valor%'`), aprovechando índices B-tree (`INDEX SEEK`).
    - **Nombres libres** (personas, organizaciones, ubicaciones): buscar por **fragmento** (`CONTAINS`) usando una colación insensible a mayúsculas y tildes (`Accent-Insensitive`), escapando comodines (`\`, `%`, `_`, `[`) y parametrizando siempre el valor.

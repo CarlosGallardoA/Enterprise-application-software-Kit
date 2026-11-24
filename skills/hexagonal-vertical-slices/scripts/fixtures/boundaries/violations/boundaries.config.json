@@ -1,0 +1,7 @@
+{
+  "scanRoots": ["src"],
+  "forbiddenPackagesByLayer": {
+    "domain": ["^@angular/", "^Microsoft\\.EntityFrameworkCore"],
+    "application": ["^@angular/common/http", "^Microsoft\\.EntityFrameworkCore"]
+  }
+}

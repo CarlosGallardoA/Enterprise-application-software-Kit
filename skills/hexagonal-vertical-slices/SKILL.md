@@ -45,7 +45,9 @@ Dominio ◄──── Aplicación (Casos de Uso + Puertos)
 | `domain` | Entidades, objetos de valor, invariantes y reglas puras del negocio. | Frameworks web, ORM/SQL, clientes HTTP, DOM, inyección de dependencias. |
 | `application` | Casos de uso (orquestación), comandos/consultas, resultados tipados y **puertos** (interfaces que necesita del exterior). | ORM, consultas SQL/IQueryable, objetos de transporte HTTP (`Request`/`Response`/`Context`), componentes UI o routers. |
 | `infrastructure` | Adaptadores concretos que implementan los puertos 1:1 (repositorios BD, clientes HTTP/OAuth, cifrado, Outbox) y tokens de composición. | Reglas de negocio, orquestación de casos de uso o lógica de presentación. |
-| `api` / `ui` | Adaptadores de entrada (controladores HTTP, componentes visuales, stores reactivos de vista, guards) y raíces de composición. | Reglas de negocio, acceso directo a base de datos o a clientes HTTP sin pasar por el caso de uso/puerto del slice. |
+| `api` / `ui` | Adaptadores de entrada (controladores HTTP, componentes visuales, stores reactivos de vista, guards) y raíces de composición. | Reglas de negocio, acceso directo a base de datos o a clientes HTTP sin pasar por el caso de uso/puerto del slice. Única excepción documentada del host: raíz de composición, *health checks* de BD y manejadores globales que traducen excepciones del ORM. |
+
+En backend cada capa es un **proyecto compilado** con grafo de referencias acíclico y un proyecto de pruebas espejo por proyecto de `src`; ver [backend-slice-anatomy.md](./references/backend-slice-anatomy.md).
 
 ## Simetría entre Backend y Frontend
 
@@ -60,7 +62,8 @@ Dominio ◄──── Aplicación (Casos de Uso + Puertos)
 | Composición | `DependencyInjection` + `ApplicationComposition` + arranque | `app.config` (global) + rutas shell + rutas diferidas de cada feature |
 
 Consulta las recetas detalladas y tablas de decisión en:
-- [backend-slice-anatomy.md](./references/backend-slice-anatomy.md) — las 3 formas válidas de carpeta, contratos de salida, decoradores con invalidación generacional y composición.
+- [backend-slice-anatomy.md](./references/backend-slice-anatomy.md) — capas como proyectos compilados, las 3 formas válidas de carpeta con su registro vivo, composición explícita sin mediador ni mapeo automático, decoradores con invalidación generacional, TTL y *single-flight*.
+- [naming-conventions.md](./references/naming-conventions.md) — tabla de nombres obligatoria para casos de uso, puertos, adaptadores, controladores, eventos, tokens y archivos en backend y frontend.
 - [frontend-slice-anatomy.md](./references/frontend-slice-anatomy.md) — las 4 capas de una feature en cliente, stores con puertos segregados lectura/escritura (`QueryPort`/`CommandPort`), alcance de rutas diferidas y criterio CRUD maestro-detalle vs ruta separada.
 
 ## Receta rápida para una funcionalidad nueva de punta a punta
@@ -87,6 +90,11 @@ node <ruta-skill>/scripts/check-architecture-boundaries.mjs --config ./boundarie
 - Los tokens de composición anidados (`infrastructure/<concern>/composition/*.tokens`) son importables desde `ui`; la raíz de composición (`composition/` fuera de features y del kernel) no es importable desde features ni `core`.
 - `allowedCrossFeatureTargetRegex` (vacío por defecto = cero imports entre features): en backend con contratos de la Forma 3, habilitar `(?:^|/)shared(?:/|$)` para aceptar solo `<feature>/shared/**` de la feature dueña.
 - Un `--config` inexistente termina con código 2 en lugar de verificar con valores por defecto.
+- `testFilePatterns`: las pruebas **se inspeccionan**; solo quedan exentas de las reglas por capa (`*-isolation`, `ui-to-adapter`, `forbidden-package`). Una spec que importa otra feature sigue fallando.
+- `forbiddenPackagesByLayer`: expresiones regulares sobre imports externos prohibidos por capa (ORM, framework web, cliente HTTP o framework UI en `domain`/`application`). El ejemplo trae valores para .NET, Angular/React/Vue, Python y JVM.
+- `inspectCSharpQualifiedNames`: detecta dependencias escritas como nombre calificado en línea (`Acme.Infrastructure.Persistence.EfRepo`) aunque no haya `using`.
+- `forbidDuplicateImportsInJsTs`: dos `import` de valor (o dos `import type`) del mismo módulo se agrupan.
+- Autoprueba del validador con fixtures válidos e inválidos: `node --test <ruta-skill>/scripts/check-architecture-boundaries.test.mjs`. Toda regla nueva del validador (o regla ESLint propia del proyecto) llega con su caso en los fixtures. En el proyecto, encadenar el validador en `npm run lint` para que CI lo ejecute.
 
 Checklist manual complementario al revisar el diff:
 - [ ] Cero imports entre features hermanas (`features/a` no importa `features/b`).
@@ -94,3 +102,5 @@ Checklist manual complementario al revisar el diff:
 - [ ] `domain` y `application` no importan `infrastructure`, ORM, transporte HTTP ni `ui`.
 - [ ] `ui` no importa adaptadores concretos de `infrastructure` (únicamente tokens de composición).
 - [ ] No se subieron providers propios de una ruta diferida al inyector global por comodidad.
+- [ ] Cada caso de uso nuevo está registrado explícitamente en su raíz de composición; sin mediador, mapeador automático ni registro por escaneo.
+- [ ] Los nombres siguen [naming-conventions.md](./references/naming-conventions.md) y toda Forma 2/3 nueva figura en el registro vivo del doc de arquitectura.

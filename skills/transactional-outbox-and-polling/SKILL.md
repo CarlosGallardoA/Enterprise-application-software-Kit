@@ -37,6 +37,7 @@ Autenticación, autorización, validación de reglas y transiciones de estatus, 
 ### A. Agregar un evento durable al Outbox Transaccional
 
 1. **Unidad transaccional completa**: asegurar que generación de secuencia + mutación del agregado + bitácora + notificaciones + `OutboxWriter.enqueue(...)` ocurran **antes** del único `commit` de la transacción. `OutboxWriter` solo registra la fila pendiente en la unidad de trabajo; nunca hace commit por su cuenta.
+   - El número correlativo se obtiene con un upsert atómico sobre la tabla contador (`MERGE ... WITH (HOLDLOCK) OUTPUT` / `INSERT ... ON CONFLICT DO UPDATE RETURNING`), nunca con `MAX + 1`. Resolver destinatarios y demás lecturas **antes** de tomar el contador para que el bloqueo de numeración dure lo mínimo. Ver §7 de las [guardas de rendimiento](../clean-code-and-standards/references/performance-and-concurrency-guardrails.md).
 2. **Contrato de evento explícito y versionado**:
    - Ubicado en `features/<feature>/events/<Nombre>V1`.
    - `eventType` estable en texto con namespace y versión (`<app>.<dominio>.<hecho>.v1`), **nunca** nombres de clase o ensamblado del lenguaje.
@@ -57,8 +58,11 @@ Autenticación, autorización, validación de reglas y transiciones de estatus, 
 1. El servicio hospedado (`Singleton`) es un adaptador delgado con temporizador periódico:
    - En cada vuelta crea un **nuevo alcance DI (`Scope`)** para resolver el caso de uso y su unidad de trabajo de base de datos (nunca inyectar repositorios `Scoped` directo en el constructor `Singleton`).
    - Envuelve cada vuelta en `try / catch` (excluyendo la cancelación de apagado del host) registrando el fallo sin derribar el proceso completo. El filtro mira el token de apagado, no el tipo de excepción: `catch (e) when (!(e is OperationCanceled && stoppingToken.isCancellationRequested))`. Una cancelación propia (timeout de un cliente HTTP, tope del handler) es un fallo de la vuelta y se registra; filtrar solo por tipo de excepción la dejaría escapar y, con la política de detener el host ante excepciones no controladas, derribaría la aplicación.
+   - Usa un temporizador periódico (`PeriodicTimer` o equivalente) con **primera vuelta inmediata al arrancar**: `do { await RunOnceAsync(ct); } while (await timer.WaitForNextTickAsync(ct));`. Esperar un intervalo completo antes de la primera vuelta retrasa avisos vencidos tras cada despliegue o reciclado.
 2. Toda la lógica de negocio vive en un caso de uso normal de `application`, testeable en milisegundos con fakes en memoria y reloj falso.
 3. Procesa candidatos en lotes acotados (`LIMIT`) y estampa marcas `*NotifiedAtUtc` en la misma transacción que la notificación para no repetir avisos en la vuelta siguiente.
+4. **Sin costo cuadrático del ORM**: lee los candidatos sin tracking proyectando solo las columnas necesarias, precarga en **una** consulta los datos relacionados de todo el lote (`WHERE id IN (...)`), ejecuta un único `SaveChanges` por lote y limpia el rastreador de cambios después. Prohibido consultar o guardar fila por fila.
+5. **Índice filtrado por candidatos pendientes**: cada barrido tiene un índice cuyo filtro es su predicado de pendientes (`WHERE NotifiedAtUtc IS NULL`), y los umbrales temporales se calculan en la aplicación con el reloj inyectado y se comparan contra la columna desnuda. Ver §1 y §6 de las [guardas de rendimiento](../clean-code-and-standards/references/performance-and-concurrency-guardrails.md).
 
 ### C. Implementar Sondeo Disciplinado en el Cliente (`PollScheduler`)
 
@@ -73,6 +77,7 @@ Los proxies reversos corporativos e institucionales suelen retener sesiones o bl
    - Fusionar señales globales (sesión vigente + contador de notificaciones) en un único `GET /shell/heartbeat` cada ~60 s **más** un `refreshIfStale` asíncrono en cada cambio de ruta (`NavigationEnd`) para que una revocación de permisos surta efecto en la siguiente navegación sin repetir peticiones al navegar rápido.
    - Tras una acción del usuario que dispara un efecto asíncrono, usar un **sondeo de confirmación acotado** (p. ej. 8 intentos, espera de 1 s a 5 s) que se detiene con el desenlace, nunca un sondeo periódico indefinido.
    - En colas operativas activas (~30 s), consultar solo `pageSize: 1` para comparar `totalCount` y mostrar un banner *«Hay cambios disponibles — Actualizar»* en vez de reordenar la tabla bajo el puntero del usuario.
+   - Los contadores del heartbeat (notificaciones no leídas) se cuentan con tope en el servidor (`TOP (100)` + `COUNT`) y la UI muestra `99+`; nunca un `COUNT` completo en cada sondeo.
    - **No sondear** pantallas de consulta puntual, catálogos o formularios estáticos.
 3. Ver especificación completa en [client-poll-scheduler-spec.md](./references/client-poll-scheduler-spec.md).
 
